@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  role      UserRole
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum AssetStatus {
+  ACTIVE
+  MAINTENANCE
+  RETIRED
+  LOST
+}
+
+enum AssetCategory {
+  LAPTOP
+  CAMERA
+  MOBILE
+  TABLET
+  OTHER
+}
+
+model Asset {
+  id              String        @id @default(uuid())
+  name            String
+  category        AssetCategory
+  status          AssetStatus   @default(ACTIVE)
+  serialNumber    String        @unique
+  location        String
+  isQrGenerated   Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model VerificationLog {
+  id         String   @id @default(uuid())
+  assetId    String
+  verifiedBy String
+  verifiedAt DateTime @default(now())
+}
+
+model Complaint {
+  id         String   @id @default(uuid())
+  assetId    String
+  reportedBy String
+  createdAt  DateTime @default(now())
+}
