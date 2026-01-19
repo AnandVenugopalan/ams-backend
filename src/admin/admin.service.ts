@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -96,87 +96,5 @@ export class AdminService {
         recentVerified,
       },
     };
-  }
-
-  async getVerifications() {
-    const logs = await this.prisma.verificationLog.findMany({
-      orderBy: { verifiedAt: 'desc' },
-    });
-
-    const data = await Promise.all(
-      logs.map(async (log) => {
-        const asset = await this.prisma.asset.findUnique({
-          where: { id: log.assetId },
-          select: { name: true },
-        });
-
-        const user = await this.prisma.user.findFirst({
-          where: { username: log.verifiedBy },
-          select: { username: true },
-        });
-
-        return {
-          assetId: log.assetId,
-          assetName: asset?.name || 'Unknown',
-          verifiedBy: user?.username || log.verifiedBy,
-          createdAt: log.verifiedAt,
-        };
-      })
-    );
-
-    return {
-      data,
-      total: data.length,
-    };
-  }
-
-  async getComplaints() {
-    const complaints = await this.prisma.complaint.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const data = await Promise.all(
-      complaints.map(async (complaint) => {
-        const asset = await this.prisma.asset.findUnique({
-          where: { id: complaint.assetId },
-          select: { name: true },
-        });
-
-        const user = await this.prisma.user.findFirst({
-          where: { username: complaint.reportedBy },
-          select: { username: true },
-        });
-
-        return {
-          id: complaint.id,
-          assetId: complaint.assetId,
-          assetName: asset?.name || 'Unknown',
-          description: '',
-          status: complaint.status,
-          reportedBy: user?.username || complaint.reportedBy,
-          createdAt: complaint.createdAt,
-        };
-      })
-    );
-
-    return {
-      data,
-      total: data.length,
-    };
-  }
-
-  async resolveComplaint(id: string) {
-    const complaint = await this.prisma.complaint.findUnique({
-      where: { id },
-    });
-
-    if (!complaint) {
-      throw new NotFoundException('Complaint not found');
-    }
-
-    return this.prisma.complaint.update({
-      where: { id },
-      data: { status: 'RESOLVED' },
-    });
   }
 }

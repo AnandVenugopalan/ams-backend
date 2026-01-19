@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Query, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -17,24 +17,7 @@ export class AssetController {
   }
 
   @Get()
-  findAll(
-    @Query('search') search?: string,
-    @Query('category') category?: string,
-    @Query('status') status?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.assetService.findAll({
-      search,
-      category,
-      status,
-      page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
-    });
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.assetService.findOne(id);
+  findAll() {
+    return this.assetService.findAll();
   }
 }

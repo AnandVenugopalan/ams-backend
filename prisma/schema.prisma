@@ -56,15 +56,9 @@ model VerificationLog {
   verifiedAt DateTime @default(now())
 }
 
-enum ComplaintStatus {
-  PENDING
-  RESOLVED
-}
-
 model Complaint {
-  id         String          @id @default(uuid())
+  id         String   @id @default(uuid())
   assetId    String
   reportedBy String
-  status     ComplaintStatus @default(PENDING)
-  createdAt  DateTime        @default(now())
+  createdAt  DateTime @default(now())
 }
