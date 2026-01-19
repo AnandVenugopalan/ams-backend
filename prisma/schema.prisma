@@ -46,9 +46,10 @@ model Asset {
   name            String
   category        AssetCategory
   status          AssetStatus   @default(ACTIVE)
-  serialNumber    String        @unique
+  serialNumber    String?       @unique
   location        String
   isQrGenerated   Boolean       @default(false)
+  registeredBy    String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 }
@@ -74,8 +75,10 @@ model Complaint {
 }
 
 model QrCode {
-  id         String   @id @default(uuid())
-  code       String   @unique
-  isAssigned Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid())
+  code         String   @unique
+  isAssigned   Boolean  @default(false)
+  assetId      String?  @unique
+  registeredBy String?
+  createdAt    DateTime @default(now())
 }
