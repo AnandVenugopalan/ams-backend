@@ -1,5 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import * as bcrypt from 'bcrypt';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 
 @Injectable()
 export class AdminService {
@@ -177,6 +180,99 @@ export class AdminService {
     return this.prisma.complaint.update({
       where: { id },
       data: { status: 'RESOLVED' },
+    });
+  }
+
+  async getUsers() {
+    return this.prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        username: true,
+        role: true,
+        designation: true,
+        phone: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  async createUser(createUserDto: CreateUserDto) {
+    // Check for duplicate username
+    const existingUsername = await this.prisma.user.findUnique({
+      where: { username: createUserDto.username },
+    });
+
+    if (existingUsername) {
+      throw new ConflictException('Username already exists');
+    }
+
+    // Check for duplicate email
+    const existingEmail = await this.prisma.user.findUnique({
+      where: { email: createUserDto.email },
+    });
+
+    if (existingEmail) {
+      throw new ConflictException('Email already exists');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+
+    // Create user
+    const user = await this.prisma.user.create({
+      data: {
+        fullName: createUserDto.fullName,
+        email: createUserDto.email,
+        username: createUserDto.username,
+        password: hashedPassword,
+        role: createUserDto.role,
+        designation: createUserDto.designation,
+        phone: createUserDto.phone,
+        isActive: createUserDto.isActive,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        username: true,
+        role: true,
+        designation: true,
+        phone: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    return user;
+  }
+
+  async updateUserStatus(id: string, updateUserStatusDto: UpdateUserStatusDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { isActive: updateUserStatusDto.isActive },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        username: true,
+        role: true,
+        designation: true,
+        phone: true,
+        isActive: true,
+        createdAt: true,
+      },
     });
   }
 }
