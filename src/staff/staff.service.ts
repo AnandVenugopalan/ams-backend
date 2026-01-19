@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RegisterAssetDto } from './dto/register-asset.dto';
 
 @Injectable()
 export class StaffService {
@@ -22,5 +23,72 @@ export class StaffService {
     });
 
     return { message: 'Asset verified successfully' };
+  }
+
+  async registerAsset(registerAssetDto: RegisterAssetDto, staffId: string) {
+    const { qrCode, assetName, category, serialNumber, location } = registerAssetDto;
+
+    // Find QR code
+    const qr = await this.prisma.qrCode.findUnique({
+      where: { code: qrCode },
+    });
+
+    if (!qr) {
+      throw new NotFoundException('QR code not found');
+    }
+
+    if (qr.isAssigned) {
+      throw new BadRequestException('QR code is already assigned to an asset');
+    }
+
+    // Create asset
+    const asset = await this.prisma.asset.create({
+      data: {
+        name: assetName,
+        category,
+        serialNumber,
+        location: location || 'Not specified',
+        isQrGenerated: true,
+        registeredBy: staffId,
+      },
+    });
+
+    // Update QR code
+    await this.prisma.qrCode.update({
+      where: { id: qr.id },
+      data: {
+        isAssigned: true,
+        assetId: asset.id,
+        registeredBy: staffId,
+      },
+    });
+
+    return asset;
+  }
+
+  async verifyQr(code: string) {
+    const qr = await this.prisma.qrCode.findUnique({
+      where: { code },
+    });
+
+    if (!qr) {
+      return {
+        valid: false,
+        message: 'Invalid QR code',
+      };
+    }
+
+    if (qr.isAssigned) {
+      return {
+        valid: false,
+        message: 'QR already linked to asset',
+      };
+    }
+
+    return {
+      valid: true,
+      qrId: qr.id,
+      code: qr.code,
+    };
   }
 }
