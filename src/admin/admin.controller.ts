@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Param, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -20,5 +20,19 @@ export class AdminController {
   @Get('verifications')
   getVerifications() {
     return this.adminService.getVerifications();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('complaints')
+  getComplaints() {
+    return this.adminService.getComplaints();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Patch('complaints/:id/resolve')
+  resolveComplaint(@Param('id') id: string) {
+    return this.adminService.resolveComplaint(id);
   }
 }
