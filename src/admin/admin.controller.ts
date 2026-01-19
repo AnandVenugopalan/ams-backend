@@ -5,6 +5,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AdminService } from './admin.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { GenerateQrDto } from './dto/generate-qr.dto';
 
 @Controller('admin')
 export class AdminController {
@@ -60,5 +61,12 @@ export class AdminController {
     @Body() updateUserStatusDto: UpdateUserStatusDto,
   ) {
     return this.adminService.updateUserStatus(id, updateUserStatusDto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Post('qr/generate')
+  generateQrCodes(@Body() generateQrDto: GenerateQrDto) {
+    return this.adminService.generateQrCodes(generateQrDto);
   }
 }
