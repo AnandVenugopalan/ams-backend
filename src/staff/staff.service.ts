@@ -78,17 +78,31 @@ export class StaffService {
       };
     }
 
-    if (qr.isAssigned) {
+    if (qr.isAssigned && qr.assetId) {
+      // Fetch asset details
+      const asset = await this.prisma.asset.findUnique({
+        where: { id: qr.assetId },
+      });
+
       return {
-        valid: false,
-        message: 'QR already linked to asset',
+        valid: true,
+        alreadyAssigned: true,
+        asset: asset ? {
+          id: asset.id,
+          name: asset.name,
+          category: asset.category,
+          serialNumber: asset.serialNumber,
+          status: asset.status,
+          location: asset.location,
+        } : null,
       };
     }
 
     return {
       valid: true,
+      alreadyAssigned: false,
       qrId: qr.id,
-      code: qr.code,
+      qrCode: qr.code,
     };
   }
 }
