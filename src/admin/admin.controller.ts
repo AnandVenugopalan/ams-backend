@@ -14,4 +14,11 @@ export class AdminController {
   getDashboard() {
     return this.adminService.getDashboard();
   }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('verifications')
+  getVerifications() {
+    return this.adminService.getVerifications();
+  }
 }
