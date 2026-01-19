@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { GenerateQrDto } from './dto/generate-qr.dto';
 
 @Injectable()
 export class AdminService {
@@ -274,5 +275,100 @@ export class AdminService {
         createdAt: true,
       },
     });
+  }
+
+  async generateQrCodes(generateQrDto: GenerateQrDto) {
+    const { count } = generateQrDto;
+
+    // Additional validation in service layer
+    if (count < 1 || count > 100) {
+      throw new BadRequestException('Count must be between 1 and 100');
+    }
+
+    const qrCodes = [];
+    const generatedCodes = new Set<string>();
+
+    // Generate unique codes
+    while (qrCodes.length < count) {
+      const randomNum = Math.floor(100000 + Math.random() * 900000);
+      const code = `QR-${randomNum}`;
+
+      // Skip if already generated in this batch
+      if (generatedCodes.has(code)) {
+        continue;
+      }
+
+      generatedCodes.add(code);
+      qrCodes.push({
+        code,
+        isAssigned: false,
+      });
+    }
+
+    // Check for existing codes in database
+    const existingCodes = await this.prisma.qrCode.findMany({
+      where: {
+        code: {
+          in: Array.from(generatedCodes),
+        },
+      },
+      select: { code: true },
+    });
+
+    // If any codes already exist, regenerate those
+    if (existingCodes.length > 0) {
+      const existingCodeSet = new Set(existingCodes.map((qr) => qr.code));
+      const finalCodes = qrCodes.filter((qr) => !existingCodeSet.has(qr.code));
+      const needMore = count - finalCodes.length;
+
+      // Regenerate the conflicting ones
+      for (let i = 0; i < needMore; i++) {
+        let attempts = 0;
+        let newCode: string;
+
+        do {
+          const randomNum = Math.floor(100000 + Math.random() * 900000);
+          newCode = `QR-${randomNum}`;
+          attempts++;
+
+          if (attempts > 1000) {
+            throw new BadRequestException('Unable to generate unique QR codes');
+          }
+        } while (
+          generatedCodes.has(newCode) ||
+          existingCodeSet.has(newCode)
+        );
+
+        generatedCodes.add(newCode);
+        finalCodes.push({
+          code: newCode,
+          isAssigned: false,
+        });
+      }
+
+      // Replace with final codes
+      qrCodes.length = 0;
+      qrCodes.push(...finalCodes);
+    }
+
+    // Bulk insert
+    await this.prisma.qrCode.createMany({
+      data: qrCodes,
+    });
+
+    // Fetch and return created QR codes
+    const result = await this.prisma.qrCode.findMany({
+      where: {
+        code: {
+          in: qrCodes.map((qr) => qr.code),
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      count: result.length,
+      qrCodes: result,
+    };
   }
 }

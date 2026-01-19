@@ -72,3 +72,10 @@ model Complaint {
   status     ComplaintStatus @default(PENDING)
   createdAt  DateTime        @default(now())
 }
+
+model QrCode {
+  id         String   @id @default(uuid())
+  code       String   @unique
+  isAssigned Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
