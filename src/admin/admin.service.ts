@@ -97,4 +97,36 @@ export class AdminService {
       },
     };
   }
+
+  async getVerifications() {
+    const logs = await this.prisma.verificationLog.findMany({
+      orderBy: { verifiedAt: 'desc' },
+    });
+
+    const data = await Promise.all(
+      logs.map(async (log) => {
+        const asset = await this.prisma.asset.findUnique({
+          where: { id: log.assetId },
+          select: { name: true },
+        });
+
+        const user = await this.prisma.user.findFirst({
+          where: { username: log.verifiedBy },
+          select: { username: true },
+        });
+
+        return {
+          assetId: log.assetId,
+          assetName: asset?.name || 'Unknown',
+          verifiedBy: user?.username || log.verifiedBy,
+          createdAt: log.verifiedAt,
+        };
+      })
+    );
+
+    return {
+      data,
+      total: data.length,
+    };
+  }
 }
