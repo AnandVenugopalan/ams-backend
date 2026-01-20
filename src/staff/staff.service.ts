@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterAssetDto } from './dto/register-asset.dto';
+import { ReportIssueDto } from './dto/report-issue.dto';
 
 @Injectable()
 export class StaffService {
@@ -23,6 +24,42 @@ export class StaffService {
     });
 
     return { message: 'Asset verified successfully' };
+  }
+
+  async verifyStaffAsset(assetId: string, verifiedBy: string) {
+    // Validate asset exists
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: assetId },
+    });
+
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+
+    const currentTime = new Date();
+
+    // Update asset lastVerifiedAt
+    await this.prisma.asset.update({
+      where: { id: assetId },
+      data: {
+        lastVerifiedAt: currentTime,
+      },
+    });
+
+    // Insert record into verification log
+    await this.prisma.verificationLog.create({
+      data: {
+        assetId,
+        verifiedBy,
+        verifiedAt: currentTime,
+      },
+    });
+
+    return {
+      message: 'Asset verified successfully',
+      assetId,
+      verifiedAt: currentTime,
+    };
   }
 
   async registerAsset(registerAssetDto: RegisterAssetDto, staffId: string) {
@@ -104,5 +141,31 @@ export class StaffService {
       qrId: qr.id,
       qrCode: qr.code,
     };
+  }
+
+  async reportIssue(reportIssueDto: ReportIssueDto, staffId: string) {
+    const { assetId, description, imageUrl } = reportIssueDto;
+
+    // Validate asset exists
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: assetId },
+    });
+
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+
+    // Create complaint record
+    await this.prisma.complaint.create({
+      data: {
+        assetId,
+        reportedBy: staffId,
+        description,
+        imageUrl: imageUrl || null,
+        status: 'PENDING',
+      },
+    });
+
+    return { message: 'Issue reported successfully' };
   }
 }

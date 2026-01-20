@@ -6,6 +6,7 @@ import { StaffService } from './staff.service';
 import { VerifyAssetDto } from './dto/verify-asset.dto';
 import { RegisterAssetDto } from './dto/register-asset.dto';
 import { VerifyQrDto } from './dto/verify-qr.dto';
+import { ReportIssueDto } from './dto/report-issue.dto';
 
 @Controller('staff')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -18,6 +19,11 @@ export class StaffController {
     return this.staffService.verifyAsset(verifyAssetDto.assetId, req.user.userId);
   }
 
+  @Post('assets/verify')
+  async verifyStaffAsset(@Body() verifyAssetDto: VerifyAssetDto, @Request() req) {
+    return this.staffService.verifyStaffAsset(verifyAssetDto.assetId, req.user.userId);
+  }
+
   @Post('assets/register')
   async registerAsset(@Body() registerAssetDto: RegisterAssetDto, @Request() req) {
     return this.staffService.registerAsset(registerAssetDto, req.user.userId);
@@ -26,5 +32,10 @@ export class StaffController {
   @Post('qr/verify')
   async verifyQr(@Body() verifyQrDto: VerifyQrDto) {
     return this.staffService.verifyQr(verifyQrDto.qrCode);
+  }
+
+  @Post('complaints')
+  async reportIssue(@Body() reportIssueDto: ReportIssueDto, @Request() req) {
+    return this.staffService.reportIssue(reportIssueDto, req.user.userId);
   }
 }
