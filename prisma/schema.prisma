@@ -50,6 +50,7 @@ model Asset {
   location        String
   isQrGenerated   Boolean       @default(false)
   registeredBy    String?
+  lastVerifiedAt  DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 }
@@ -67,11 +68,13 @@ enum ComplaintStatus {
 }
 
 model Complaint {
-  id         String          @id @default(uuid())
-  assetId    String
-  reportedBy String
-  status     ComplaintStatus @default(PENDING)
-  createdAt  DateTime        @default(now())
+  id          String          @id @default(uuid())
+  assetId     String
+  reportedBy  String
+  description String
+  imageUrl    String?
+  status      ComplaintStatus @default(PENDING)
+  createdAt   DateTime        @default(now())
 }
 
 model QrCode {
