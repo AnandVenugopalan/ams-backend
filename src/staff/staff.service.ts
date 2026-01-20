@@ -238,6 +238,7 @@ export class StaffService {
 
   async getAllAssets() {
     const assets = await this.prisma.asset.findMany({
+      where: { isDeleted: false },
       select: {
         id: true,
         name: true,

@@ -10,9 +10,11 @@ export class AdminService {
   constructor(private prisma: PrismaService) {}
 
   async getDashboard() {
-    const totalAssets = await this.prisma.asset.count();
+    const totalAssets = await this.prisma.asset.count({
+      where: { isDeleted: false },
+    });
     const activeAssets = await this.prisma.asset.count({
-      where: { status: 'ACTIVE' },
+      where: { status: 'ACTIVE', isDeleted: false },
     });
 
     const today = new Date();
@@ -58,6 +60,7 @@ export class AdminService {
 
     // Recent data
     const recentAssets = await this.prisma.asset.findMany({
+      where: { isDeleted: false },
       take: 5,
       orderBy: { createdAt: 'desc' },
       select: {
@@ -369,6 +372,230 @@ export class AdminService {
     return {
       count: result.length,
       qrCodes: result,
+    };
+  }
+
+  async getAssetDetails(assetId: string) {
+    // Validate asset exists
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: assetId },
+    });
+
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+
+    // Fetch QR code for this asset
+    const qrCode = await this.prisma.qrCode.findFirst({
+      where: { assetId: assetId },
+    });
+
+    // Fetch creator/registered by user info
+    let createdByUser = null;
+    if (asset.registeredBy) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: asset.registeredBy },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          designation: true,
+        },
+      });
+      createdByUser = user;
+    }
+
+    return {
+      id: asset.id,
+      assetName: asset.name,
+      category: asset.category,
+      serialNumber: asset.serialNumber,
+      status: asset.status,
+      location: asset.location,
+      imageUrl: null, // Asset model doesn't have imageUrl field
+      qrCode: qrCode?.code || null,
+      createdAt: asset.createdAt,
+      lastVerifiedAt: asset.lastVerifiedAt,
+      createdBy: createdByUser,
+    };
+  }
+
+  async getAssetVerificationHistory(assetId: string) {
+    const verificationLogs = await this.prisma.verificationLog.findMany({
+      where: {
+        assetId: assetId,
+      },
+      orderBy: {
+        verifiedAt: 'desc',
+      },
+    });
+
+    // Fetch staff names for each verification
+    const history = await Promise.all(
+      verificationLogs.map(async (log) => {
+        const user = await this.prisma.user.findUnique({
+          where: { id: log.verifiedBy },
+          select: {
+            fullName: true,
+          },
+        });
+
+        return {
+          id: log.id,
+          verifiedBy: user?.fullName || 'Unknown User',
+          verifiedAt: log.verifiedAt,
+        };
+      })
+    );
+
+    return history;
+  }
+
+  async getAssetComplaints(assetId: string) {
+    const complaints = await this.prisma.complaint.findMany({
+      where: {
+        assetId: assetId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // Fetch staff names for each complaint
+    const complaintHistory = await Promise.all(
+      complaints.map(async (complaint) => {
+        const user = await this.prisma.user.findUnique({
+          where: { id: complaint.reportedBy },
+          select: {
+            fullName: true,
+          },
+        });
+
+        return {
+          id: complaint.id,
+          description: complaint.description,
+          imageUrl: complaint.imageUrl,
+          status: complaint.status,
+          createdAt: complaint.createdAt,
+          reportedBy: user?.fullName || 'Unknown User',
+        };
+      })
+    );
+
+    return complaintHistory;
+  }
+
+  async updateAsset(assetId: string, updateData: any) {
+    // Validate asset exists
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: assetId },
+    });
+
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+
+    // Update asset fields
+    const updatedAsset = await this.prisma.asset.update({
+      where: { id: assetId },
+      data: {
+        name: updateData.name,
+        category: updateData.category,
+        serialNumber: updateData.serialNumber,
+        status: updateData.status,
+      },
+    });
+
+    return updatedAsset;
+  }
+
+  async deleteAsset(assetId: string) {
+    // Validate asset exists
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: assetId },
+    });
+
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+
+    // Soft delete the asset
+    await this.prisma.asset.update({
+      where: { id: assetId },
+      data: {
+        isDeleted: true,
+      },
+    });
+
+    // Unassign the QR code if assigned
+    await this.prisma.qrCode.updateMany({
+      where: { assetId: assetId },
+      data: {
+        isAssigned: false,
+        assetId: null,
+      },
+    });
+
+    return { message: 'Asset deleted successfully' };
+  }
+
+  async regenerateQrCode(assetId: string) {
+    // Validate asset exists
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: assetId },
+    });
+
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+
+    // Find old QR code assigned to this asset
+    const oldQr = await this.prisma.qrCode.findFirst({
+      where: { assetId: assetId },
+    });
+
+    // Invalidate old QR code
+    if (oldQr) {
+      await this.prisma.qrCode.update({
+        where: { id: oldQr.id },
+        data: {
+          isAssigned: false,
+          assetId: null,
+        },
+      });
+    }
+
+    // Generate new unique QR code
+    let newCode: string;
+    let attempts = 0;
+    do {
+      const randomNum = Math.floor(100000 + Math.random() * 900000);
+      newCode = `QR-${randomNum}`;
+      attempts++;
+
+      if (attempts > 1000) {
+        throw new BadRequestException('Unable to generate unique QR code');
+      }
+
+      const exists = await this.prisma.qrCode.findUnique({
+        where: { code: newCode },
+      });
+
+      if (!exists) break;
+    } while (true);
+
+    // Create new QR code and assign to asset
+    const newQr = await this.prisma.qrCode.create({
+      data: {
+        code: newCode,
+        isAssigned: true,
+        assetId: assetId,
+      },
+    });
+
+    return {
+      message: 'QR code regenerated successfully',
+      qrCode: newQr.code,
     };
   }
 }
