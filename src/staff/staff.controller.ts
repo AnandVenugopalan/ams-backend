@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -37,5 +37,20 @@ export class StaffController {
   @Post('complaints')
   async reportIssue(@Body() reportIssueDto: ReportIssueDto, @Request() req) {
     return this.staffService.reportIssue(reportIssueDto, req.user.userId);
+  }
+
+  @Get('history/verified')
+  async getVerificationHistory(@Request() req) {
+    return this.staffService.getVerificationHistory(req.user.userId);
+  }
+
+  @Get('history/complaints')
+  async getComplaintHistory(@Request() req) {
+    return this.staffService.getComplaintHistory(req.user.userId);
+  }
+
+  @Get('assets')
+  async getAllAssets() {
+    return this.staffService.getAllAssets();
   }
 }
