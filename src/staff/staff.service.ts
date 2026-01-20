@@ -168,4 +168,88 @@ export class StaffService {
 
     return { message: 'Issue reported successfully' };
   }
+
+  async getVerificationHistory(staffId: string) {
+    const verificationLogs = await this.prisma.verificationLog.findMany({
+      where: {
+        verifiedBy: staffId,
+      },
+      orderBy: {
+        verifiedAt: 'desc',
+      },
+    });
+
+    // Fetch asset details for each verification
+    const history = await Promise.all(
+      verificationLogs.map(async (log) => {
+        const asset = await this.prisma.asset.findUnique({
+          where: { id: log.assetId },
+          select: {
+            id: true,
+            name: true,
+          },
+        });
+
+        return {
+          id: log.id,
+          assetId: log.assetId,
+          assetName: asset?.name || 'Unknown Asset',
+          verifiedAt: log.verifiedAt,
+        };
+      })
+    );
+
+    return history;
+  }
+
+  async getComplaintHistory(staffId: string) {
+    const complaints = await this.prisma.complaint.findMany({
+      where: {
+        reportedBy: staffId,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // Fetch asset details for each complaint
+    const history = await Promise.all(
+      complaints.map(async (complaint) => {
+        const asset = await this.prisma.asset.findUnique({
+          where: { id: complaint.assetId },
+          select: {
+            name: true,
+          },
+        });
+
+        return {
+          id: complaint.id,
+          assetId: complaint.assetId,
+          assetName: asset?.name || 'Unknown Asset',
+          description: complaint.description,
+          status: complaint.status,
+          createdAt: complaint.createdAt,
+        };
+      })
+    );
+
+    return history;
+  }
+
+  async getAllAssets() {
+    const assets = await this.prisma.asset.findMany({
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        status: true,
+        location: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return assets;
+  }
 }
