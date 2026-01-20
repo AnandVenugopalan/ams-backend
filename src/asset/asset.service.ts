@@ -45,6 +45,8 @@ export class AssetService {
         { serialNumber: { contains: search, mode: 'insensitive' } },
       ];
     }
+    // Exclude deleted assets
+    where.isDeleted = false;
 
     const [data, total] = await Promise.all([
       this.prisma.asset.findMany({
