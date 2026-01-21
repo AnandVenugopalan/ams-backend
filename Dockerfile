@@ -44,7 +44,7 @@ EXPOSE 3000
 RUN echo '#!/bin/sh' > /app/start.sh && \
     echo 'npx prisma migrate deploy' >> /app/start.sh && \
     echo 'npx prisma generate' >> /app/start.sh && \
-    echo 'node dist/main' >> /app/start.sh && \
+    echo 'node dist/src/main' >> /app/start.sh && \
     chmod +x /app/start.sh
 
 # Start the application with migrations
