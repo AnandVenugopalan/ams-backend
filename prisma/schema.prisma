@@ -7,23 +7,64 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  ADMIN
-  STAFF
-}
-
 model User {
   id          String   @id @default(uuid())
-  fullName    String
-  email       String   @unique
   username    String   @unique
   password    String
   role        UserRole
-  designation String?
-  phone       String?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  fullName    String
+  email       String   @unique
+  designation String?
+  phone       String?
+}
+
+model Asset {
+  id             String        @id @default(uuid())
+  name           String
+  category       AssetCategory
+  status         AssetStatus   @default(ACTIVE)
+  serialNumber   String?       @unique
+  location       String
+  isQrGenerated  Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  lastVerifiedAt DateTime?
+  isDeleted      Boolean       @default(false)
+  registeredBy   String?
+}
+
+model VerificationLog {
+  id         String   @id @default(uuid())
+  assetId    String
+  verifiedBy String
+  verifiedAt DateTime @default(now())
+}
+
+model Complaint {
+  id          String          @id @default(uuid())
+  assetId     String
+  reportedBy  String
+  createdAt   DateTime        @default(now())
+  status      ComplaintStatus @default(PENDING)
+  description String
+  imageUrl    String?
+}
+
+model QrCode {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  isAssigned   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  assetId      String?  @unique
+  registeredBy String?
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
 }
 
 enum AssetStatus {
@@ -41,48 +82,7 @@ enum AssetCategory {
   OTHER
 }
 
-model Asset {
-  id              String        @id @default(uuid())
-  name            String
-  category        AssetCategory
-  status          AssetStatus   @default(ACTIVE)
-  serialNumber    String?       @unique
-  location        String
-  isQrGenerated   Boolean       @default(false)
-  registeredBy    String?
-  lastVerifiedAt  DateTime?
-  isDeleted       Boolean       @default(false)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-}
-
-model VerificationLog {
-  id         String   @id @default(uuid())
-  assetId    String
-  verifiedBy String
-  verifiedAt DateTime @default(now())
-}
-
 enum ComplaintStatus {
   PENDING
   RESOLVED
-}
-
-model Complaint {
-  id          String          @id @default(uuid())
-  assetId     String
-  reportedBy  String
-  description String
-  imageUrl    String?
-  status      ComplaintStatus @default(PENDING)
-  createdAt   DateTime        @default(now())
-}
-
-model QrCode {
-  id           String   @id @default(uuid())
-  code         String   @unique
-  isAssigned   Boolean  @default(false)
-  assetId      String?  @unique
-  registeredBy String?
-  createdAt    DateTime @default(now())
 }
