@@ -72,7 +72,7 @@ export class AdminService {
       },
     });
 
-    const recentVerified = await this.prisma.verificationLog.findMany({
+    const recentVerifiedLogs = await this.prisma.verificationLog.findMany({
       take: 5,
       orderBy: { verifiedAt: 'desc' },
       select: {
@@ -81,6 +81,27 @@ export class AdminService {
         verifiedAt: true,
       },
     });
+
+    const recentVerified = await Promise.all(
+      recentVerifiedLogs.map(async (log) => {
+        const asset = await this.prisma.asset.findUnique({
+          where: { id: log.assetId },
+          select: { name: true },
+        });
+
+        const user = await this.prisma.user.findUnique({
+          where: { id: log.verifiedBy },
+          select: { fullName: true },
+        });
+
+        return {
+          assetId: log.assetId,
+          assetName: asset?.name || 'Unknown',
+          verifiedBy: user?.fullName || 'Unknown User',
+          verifiedAt: log.verifiedAt,
+        };
+      })
+    );
 
     return {
       totalAssets,
@@ -117,16 +138,16 @@ export class AdminService {
           select: { name: true },
         });
 
-        const user = await this.prisma.user.findFirst({
-          where: { username: log.verifiedBy },
-          select: { username: true },
+        const user = await this.prisma.user.findUnique({
+          where: { id: log.verifiedBy },
+          select: { fullName: true },
         });
 
         return {
           assetId: log.assetId,
           assetName: asset?.name || 'Unknown',
-          verifiedBy: user?.username || log.verifiedBy,
-          createdAt: log.verifiedAt,
+          verifiedBy: user?.fullName || 'Unknown User',
+          timestamp: log.verifiedAt,
         };
       })
     );
@@ -149,19 +170,19 @@ export class AdminService {
           select: { name: true },
         });
 
-        const user = await this.prisma.user.findFirst({
-          where: { username: complaint.reportedBy },
-          select: { username: true },
+        const user = await this.prisma.user.findUnique({
+          where: { id: complaint.reportedBy },
+          select: { fullName: true },
         });
 
         return {
           id: complaint.id,
           assetId: complaint.assetId,
           assetName: asset?.name || 'Unknown',
-          description: '',
+          description: complaint.description,
           status: complaint.status,
-          reportedBy: user?.username || complaint.reportedBy,
-          createdAt: complaint.createdAt,
+          reportedBy: user?.fullName || 'Unknown User',
+          timestamp: complaint.createdAt,
         };
       })
     );
