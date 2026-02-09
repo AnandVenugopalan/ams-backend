@@ -911,73 +911,39 @@ export class AdminService {
         throw new BadRequestException('Count must be a number between 1 and 100');
       }
 
-      const qrCodes = [];
-      const generatedCodes = new Set<string>();
+      // Find the last QR code with the new format (5-digit zero-padded)
+      const allQrCodes = await this.prisma.qrCode.findMany({
+        orderBy: { createdAt: 'desc' },
+        select: { code: true },
+      });
 
-      // Generate unique codes
-      while (qrCodes.length < count) {
-        const randomNum = Math.floor(100000 + Math.random() * 900000);
-        const code = `QR-${randomNum}`;
+      // Filter for new format QR codes (QR-00101, QR-00102, etc.) - 5 digits with leading zeros
+      const newFormatCodes = allQrCodes.filter(qr => {
+        const match = qr.code.match(/^QR-(\d{5})$/);
+        return match !== null;
+      });
 
-        // Skip if already generated in this batch
-        if (generatedCodes.has(code)) {
-          continue;
+      // Extract the number from the last QR code in new format
+      let nextNumber = 101; // Start from 101 if no QR codes exist (will be formatted as 00101)
+      if (newFormatCodes.length > 0) {
+        const match = newFormatCodes[0].code.match(/QR-(\d+)/);
+        if (match && match[1]) {
+          nextNumber = parseInt(match[1], 10) + 1;
         }
+      }
 
-        generatedCodes.add(code);
+      // Generate sequential QR codes with 5-digit zero-padded format
+      const qrCodes = [];
+      for (let i = 0; i < count; i++) {
+        const formattedNumber = String(nextNumber + i).padStart(5, '0');
+        const code = `QR-${formattedNumber}`;
         qrCodes.push({
           code,
           isAssigned: false,
         });
       }
 
-      // Check for existing codes in database
-      const existingCodes = await this.prisma.qrCode.findMany({
-        where: {
-          code: {
-            in: Array.from(generatedCodes),
-          },
-        },
-        select: { code: true },
-      });
-
-      // If any codes already exist, regenerate those
-      if (existingCodes.length > 0) {
-        const existingCodeSet = new Set(existingCodes.map((qr) => qr.code));
-        const finalCodes = qrCodes.filter((qr) => !existingCodeSet.has(qr.code));
-        const needMore = count - finalCodes.length;
-
-        // Regenerate the conflicting ones
-        for (let i = 0; i < needMore; i++) {
-          let attempts = 0;
-          let newCode: string;
-
-          do {
-            const randomNum = Math.floor(100000 + Math.random() * 900000);
-            newCode = `QR-${randomNum}`;
-            attempts++;
-
-            if (attempts > 1000) {
-              throw new BadRequestException('Unable to generate unique QR codes');
-            }
-          } while (
-            generatedCodes.has(newCode) ||
-            existingCodeSet.has(newCode)
-          );
-
-          generatedCodes.add(newCode);
-          finalCodes.push({
-            code: newCode,
-            isAssigned: false,
-          });
-        }
-
-        // Replace with final codes
-        qrCodes.length = 0;
-        qrCodes.push(...finalCodes);
-      }
-
-      // Bulk insert with skipDuplicates to handle race conditions
+      // Bulk insert
       await this.prisma.qrCode.createMany({
         data: qrCodes,
         skipDuplicates: true,
@@ -990,12 +956,14 @@ export class AdminService {
             in: qrCodes.map((qr) => qr.code),
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { code: 'asc' },
       });
 
       return {
         count: result.length,
         qrCodes: result,
+        startNumber: nextNumber,
+        endNumber: nextNumber + count - 1,
       };
     } catch (error) {
       console.error('Error generating QR codes:', error);
@@ -1197,24 +1165,30 @@ export class AdminService {
       });
     }
 
-    // Generate new unique QR code
-    let newCode: string;
-    let attempts = 0;
-    do {
-      const randomNum = Math.floor(100000 + Math.random() * 900000);
-      newCode = `QR-${randomNum}`;
-      attempts++;
+    // Generate new unique QR code using sequential numbering (new format only)
+    // Find QR codes with the new format (5-digit zero-padded)
+    const allQrCodes = await this.prisma.qrCode.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: { code: true },
+    });
 
-      if (attempts > 1000) {
-        throw new BadRequestException('Unable to generate unique QR code');
+    // Filter for new format QR codes (QR-00101, QR-00102, etc.) - 5 digits with leading zeros
+    const newFormatCodes = allQrCodes.filter(qr => {
+      const match = qr.code.match(/^QR-(\d{5})$/);
+      return match !== null;
+    });
+
+    // Extract the number from the last QR code in new format
+    let nextNumber = 101; // Start from 101 if no QR codes exist (will be formatted as 00101)
+    if (newFormatCodes.length > 0) {
+      const match = newFormatCodes[0].code.match(/QR-(\d+)/);
+      if (match && match[1]) {
+        nextNumber = parseInt(match[1], 10) + 1;
       }
+    }
 
-      const exists = await this.prisma.qrCode.findUnique({
-        where: { code: newCode },
-      });
-
-      if (!exists) break;
-    } while (true);
+    const formattedNumber = String(nextNumber).padStart(5, '0');
+    const newCode = `QR-${formattedNumber}`;
 
     // Create new QR code and assign to asset
     const newQr = await this.prisma.qrCode.create({
