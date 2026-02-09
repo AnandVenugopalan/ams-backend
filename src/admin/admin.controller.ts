@@ -5,6 +5,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AdminService } from './admin.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { GenerateQrDto } from './dto/generate-qr.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
 
@@ -62,6 +63,30 @@ export class AdminController {
     @Body() updateUserStatusDto: UpdateUserStatusDto,
   ) {
     return this.adminService.updateUserStatus(id, updateUserStatusDto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('users/:id')
+  getUserById(@Param('id') id: string) {
+    return this.adminService.getUserById(id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Put('users/:id')
+  updateUser(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
+    return this.adminService.updateUser(id, updateUserDto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Delete('users/:id')
+  deleteUser(@Param('id') id: string) {
+    return this.adminService.deleteUser(id);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

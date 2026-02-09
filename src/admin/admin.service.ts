@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { GenerateQrDto } from './dto/generate-qr.dto';
 
 @Injectable()
@@ -299,6 +300,125 @@ export class AdminService {
         createdAt: true,
       },
     });
+  }
+
+  async getUserById(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        username: true,
+        role: true,
+        designation: true,
+        phone: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  async updateUser(id: string, updateUserDto: UpdateUserDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Check for duplicate username if username is being updated
+    if (updateUserDto.username && updateUserDto.username !== user.username) {
+      const existingUsername = await this.prisma.user.findUnique({
+        where: { username: updateUserDto.username },
+      });
+
+      if (existingUsername) {
+        throw new ConflictException('Username already exists');
+      }
+    }
+
+    // Check for duplicate email if email is being updated
+    if (updateUserDto.email && updateUserDto.email !== user.email) {
+      const existingEmail = await this.prisma.user.findUnique({
+        where: { email: updateUserDto.email },
+      });
+
+      if (existingEmail) {
+        throw new ConflictException('Email already exists');
+      }
+    }
+
+    // Prepare update data
+    const updateData: any = {
+      fullName: updateUserDto.fullName,
+      email: updateUserDto.email,
+      username: updateUserDto.username,
+      role: updateUserDto.role,
+      designation: updateUserDto.designation,
+      phone: updateUserDto.phone,
+      isActive: updateUserDto.isActive,
+    };
+
+    // Hash password if provided
+    if (updateUserDto.password) {
+      updateData.password = await bcrypt.hash(updateUserDto.password, 10);
+    }
+
+    // Remove undefined fields
+    Object.keys(updateData).forEach(
+      key => updateData[key] === undefined && delete updateData[key]
+    );
+
+    return this.prisma.user.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        username: true,
+        role: true,
+        designation: true,
+        phone: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  async deleteUser(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Prevent deleting the last admin
+    if (user.role === 'ADMIN') {
+      const adminCount = await this.prisma.user.count({
+        where: { role: 'ADMIN' },
+      });
+
+      if (adminCount <= 1) {
+        throw new BadRequestException('Cannot delete the last admin user');
+      }
+    }
+
+    await this.prisma.user.delete({
+      where: { id },
+    });
+
+    return { message: 'User deleted successfully' };
   }
 
   async generateQrCodes(generateQrDto: GenerateQrDto) {
