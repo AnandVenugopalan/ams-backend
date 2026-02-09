@@ -566,6 +566,7 @@ export class AdminService {
       qrCode: qrCode?.code || null,
       createdAt: asset.createdAt,
       lastVerifiedAt: asset.lastVerifiedAt,
+      addedBy: createdByUser?.fullName || 'Unknown',
       createdBy: createdByUser,
     };
   }
