@@ -127,10 +127,62 @@ export class AdminService {
     };
   }
 
-  async getVerifications() {
-    const logs = await this.prisma.verificationLog.findMany({
-      orderBy: { verifiedAt: 'desc' },
-    });
+  async getVerifications(query?: {
+    search?: string;
+    category?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { search, category, startDate, endDate, page = 1, limit = 10 } = query || {};
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    
+    // Date range filter
+    if (startDate || endDate) {
+      where.verifiedAt = {};
+      if (startDate) where.verifiedAt.gte = new Date(startDate);
+      if (endDate) where.verifiedAt.lte = new Date(endDate);
+    }
+
+    // If category filter is applied, get asset IDs of that category first
+    if (category) {
+      const assets = await this.prisma.asset.findMany({
+        where: { 
+          category: category.toUpperCase() as any,
+          isDeleted: false,
+        },
+        select: { id: true },
+      });
+      
+      const assetIds = assets.map(a => a.id);
+      if (assetIds.length === 0) {
+        // No assets in this category, return empty result
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
+      
+      where.assetId = { in: assetIds };
+    }
+
+    const [logs, total] = await Promise.all([
+      this.prisma.verificationLog.findMany({
+        where,
+        orderBy: { verifiedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.verificationLog.count({ where }),
+    ]);
 
     const data = await Promise.all(
       logs.map(async (log) => {
@@ -153,16 +205,88 @@ export class AdminService {
       })
     );
 
+    // Apply search filter on the results (after fetching asset names)
+    let filteredData = data;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredData = data.filter(
+        (item) =>
+          item.assetName.toLowerCase().includes(searchLower) ||
+          item.verifiedBy.toLowerCase().includes(searchLower)
+      );
+    }
+
     return {
-      data,
-      total: data.length,
+      data: filteredData,
+      meta: {
+        total: search ? filteredData.length : total,
+        page,
+        limit,
+        totalPages: Math.ceil((search ? filteredData.length : total) / limit),
+      },
     };
   }
 
-  async getComplaints() {
-    const complaints = await this.prisma.complaint.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+  async getComplaints(query?: {
+    search?: string;
+    category?: string;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { search, category, status, startDate, endDate, page = 1, limit = 10 } = query || {};
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    
+    // Status filter
+    if (status) where.status = status.toUpperCase();
+    
+    // Date range filter
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    // If category filter is applied, get asset IDs of that category first
+    if (category) {
+      const assets = await this.prisma.asset.findMany({
+        where: { 
+          category: category.toUpperCase() as any,
+          isDeleted: false,
+        },
+        select: { id: true },
+      });
+      
+      const assetIds = assets.map(a => a.id);
+      if (assetIds.length === 0) {
+        // No assets in this category, return empty result
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
+      
+      where.assetId = { in: assetIds };
+    }
+
+    const [complaints, total] = await Promise.all([
+      this.prisma.complaint.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.complaint.count({ where }),
+    ]);
 
     const data = await Promise.all(
       complaints.map(async (complaint) => {
@@ -188,9 +312,26 @@ export class AdminService {
       })
     );
 
+    // Apply search filter on the results (after fetching asset names)
+    let filteredData = data;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredData = data.filter(
+        (item) =>
+          item.assetName.toLowerCase().includes(searchLower) ||
+          item.reportedBy.toLowerCase().includes(searchLower) ||
+          item.description.toLowerCase().includes(searchLower)
+      );
+    }
+
     return {
-      data,
-      total: data.length,
+      data: filteredData,
+      meta: {
+        total: search ? filteredData.length : total,
+        page,
+        limit,
+        totalPages: Math.ceil((search ? filteredData.length : total) / limit),
+      },
     };
   }
 
