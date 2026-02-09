@@ -16,11 +16,30 @@ export class AssetController {
     return this.assetService.create(createAssetDto);
   }
 
+  @Get('export/data')
+  exportAssets(
+    @Query('search') search?: string,
+    @Query('category') category?: string,
+    @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.assetService.exportAssets({
+      search,
+      category,
+      status,
+      startDate,
+      endDate,
+    });
+  }
+
   @Get()
   findAll(
     @Query('search') search?: string,
     @Query('category') category?: string,
     @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -28,6 +47,8 @@ export class AssetController {
       search,
       category,
       status,
+      startDate,
+      endDate,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { GenerateQrDto } from './dto/generate-qr.dto';
 
 @Injectable()
@@ -72,7 +73,7 @@ export class AdminService {
       },
     });
 
-    const recentVerified = await this.prisma.verificationLog.findMany({
+    const recentVerifiedLogs = await this.prisma.verificationLog.findMany({
       take: 5,
       orderBy: { verifiedAt: 'desc' },
       select: {
@@ -81,6 +82,27 @@ export class AdminService {
         verifiedAt: true,
       },
     });
+
+    const recentVerified = await Promise.all(
+      recentVerifiedLogs.map(async (log) => {
+        const asset = await this.prisma.asset.findUnique({
+          where: { id: log.assetId },
+          select: { name: true },
+        });
+
+        const user = await this.prisma.user.findUnique({
+          where: { id: log.verifiedBy },
+          select: { fullName: true },
+        });
+
+        return {
+          assetId: log.assetId,
+          assetName: asset?.name || 'Unknown',
+          verifiedBy: user?.fullName || 'Unknown User',
+          verifiedAt: log.verifiedAt,
+        };
+      })
+    );
 
     return {
       totalAssets,
@@ -105,8 +127,245 @@ export class AdminService {
     };
   }
 
-  async getVerifications() {
+  async getVerifications(query?: {
+    search?: string;
+    category?: string;
+    status?: string;
+    verifiedBy?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { search, category, status, verifiedBy, startDate, endDate, page = 1, limit = 10 } = query || {};
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    const assetWhere: any = { isDeleted: false };
+    
+    // Date range filter
+    if (startDate || endDate) {
+      where.verifiedAt = {};
+      if (startDate) where.verifiedAt.gte = new Date(startDate);
+      if (endDate) where.verifiedAt.lte = new Date(endDate);
+    }
+
+    // Verified by filter
+    if (verifiedBy) {
+      where.verifiedBy = verifiedBy;
+    }
+
+    // Category and status filters - handle at asset level
+    if (category) {
+      assetWhere.category = category.toUpperCase() as any;
+    }
+    if (status) {
+      assetWhere.status = status.toUpperCase() as any;
+    }
+
+    // If we have asset-level filters or search, get matching asset IDs first
+    if (category || status || search) {
+      if (search) {
+        assetWhere.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { serialNumber: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+
+      const assets = await this.prisma.asset.findMany({
+        where: assetWhere,
+        select: { id: true },
+      });
+      
+      const assetIds = assets.map(a => a.id);
+      if (assetIds.length === 0) {
+        // No assets match the filters, return empty result
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
+      
+      where.assetId = { in: assetIds };
+    }
+
+    // Also filter by user name if search is provided and no asset matches
+    let userIds: string[] = [];
+    if (search && !category && !status) {
+      const users = await this.prisma.user.findMany({
+        where: {
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { username: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+      userIds = users.map(u => u.id);
+
+      // Combine asset and user filters with OR
+      if (where.assetId || userIds.length > 0) {
+        const orConditions = [];
+        if (where.assetId) orConditions.push({ assetId: where.assetId });
+        if (userIds.length > 0) orConditions.push({ verifiedBy: { in: userIds } });
+        
+        // Remove assetId from where and use OR instead
+        delete where.assetId;
+        if (orConditions.length > 0) {
+          where.OR = orConditions;
+        }
+      }
+    }
+
+    const [logs, total] = await Promise.all([
+      this.prisma.verificationLog.findMany({
+        where,
+        orderBy: { verifiedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.verificationLog.count({ where }),
+    ]);
+
+    const data = await Promise.all(
+      logs.map(async (log) => {
+        const asset = await this.prisma.asset.findUnique({
+          where: { id: log.assetId },
+          select: { 
+            name: true,
+            category: true,
+            status: true,
+            serialNumber: true,
+            location: true,
+          },
+        });
+
+        const user = await this.prisma.user.findUnique({
+          where: { id: log.verifiedBy },
+          select: { fullName: true },
+        });
+
+        return {
+          id: log.id,
+          assetId: log.assetId,
+          assetName: asset?.name || 'Unknown',
+          assetCategory: asset?.category || 'UNKNOWN',
+          assetStatus: asset?.status || 'UNKNOWN',
+          assetSerialNumber: asset?.serialNumber || '-',
+          assetLocation: asset?.location || '-',
+          verifiedBy: user?.fullName || 'Unknown User',
+          verifiedById: log.verifiedBy,
+          timestamp: log.verifiedAt,
+        };
+      })
+    );
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async exportVerifications(query?: {
+    search?: string;
+    category?: string;
+    status?: string;
+    verifiedBy?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { search, category, status, verifiedBy, startDate, endDate } = query || {};
+
+    const where: any = {};
+    const assetWhere: any = { isDeleted: false };
+    
+    // Date range filter
+    if (startDate || endDate) {
+      where.verifiedAt = {};
+      if (startDate) where.verifiedAt.gte = new Date(startDate);
+      if (endDate) where.verifiedAt.lte = new Date(endDate);
+    }
+
+    // Verified by filter
+    if (verifiedBy) {
+      where.verifiedBy = verifiedBy;
+    }
+
+    // Category and status filters - handle at asset level
+    if (category) {
+      assetWhere.category = category.toUpperCase() as any;
+    }
+    if (status) {
+      assetWhere.status = status.toUpperCase() as any;
+    }
+
+    // If we have asset-level filters or search, get matching asset IDs first
+    if (category || status || search) {
+      if (search) {
+        assetWhere.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { serialNumber: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+
+      const assets = await this.prisma.asset.findMany({
+        where: assetWhere,
+        select: { id: true },
+      });
+      
+      const assetIds = assets.map(a => a.id);
+      if (assetIds.length === 0) {
+        // No assets match the filters
+        return {
+          data: [],
+          total: 0,
+          exportedAt: new Date().toISOString(),
+        };
+      }
+      
+      where.assetId = { in: assetIds };
+    }
+
+    // Also filter by user name if search is provided
+    let userIds: string[] = [];
+    if (search && !category && !status) {
+      const users = await this.prisma.user.findMany({
+        where: {
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { username: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+      userIds = users.map(u => u.id);
+
+      // Combine asset and user filters with OR
+      if (where.assetId || userIds.length > 0) {
+        const orConditions = [];
+        if (where.assetId) orConditions.push({ assetId: where.assetId });
+        if (userIds.length > 0) orConditions.push({ verifiedBy: { in: userIds } });
+        
+        // Remove assetId from where and use OR instead
+        delete where.assetId;
+        if (orConditions.length > 0) {
+          where.OR = orConditions;
+        }
+      }
+    }
+
     const logs = await this.prisma.verificationLog.findMany({
+      where,
       orderBy: { verifiedAt: 'desc' },
     });
 
@@ -114,19 +373,31 @@ export class AdminService {
       logs.map(async (log) => {
         const asset = await this.prisma.asset.findUnique({
           where: { id: log.assetId },
-          select: { name: true },
+          select: { 
+            name: true,
+            category: true,
+            status: true,
+            serialNumber: true,
+            location: true,
+          },
         });
 
-        const user = await this.prisma.user.findFirst({
-          where: { username: log.verifiedBy },
-          select: { username: true },
+        const user = await this.prisma.user.findUnique({
+          where: { id: log.verifiedBy },
+          select: { fullName: true, username: true },
         });
 
         return {
+          id: log.id,
           assetId: log.assetId,
           assetName: asset?.name || 'Unknown',
-          verifiedBy: user?.username || log.verifiedBy,
-          createdAt: log.verifiedAt,
+          assetCategory: asset?.category || 'UNKNOWN',
+          assetStatus: asset?.status || 'UNKNOWN',
+          assetSerialNumber: asset?.serialNumber || '-',
+          assetLocation: asset?.location || '-',
+          verifiedBy: user?.fullName || 'Unknown User',
+          verifiedByUsername: user?.username || '-',
+          verifiedAt: log.verifiedAt,
         };
       })
     );
@@ -134,11 +405,230 @@ export class AdminService {
     return {
       data,
       total: data.length,
+      exportedAt: new Date().toISOString(),
     };
   }
 
-  async getComplaints() {
+  async getComplaints(query?: {
+    search?: string;
+    status?: string;
+    reportedBy?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { search, status, reportedBy, startDate, endDate, page = 1, limit = 10 } = query || {};
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    
+    // Status filter
+    if (status) where.status = status.toUpperCase();
+    
+    // Reported by filter
+    if (reportedBy) {
+      where.reportedBy = reportedBy;
+    }
+    
+    // Date range filter
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    // Search filter - search in asset names, asset IDs, and description
+    if (search) {
+      const searchConditions = [];
+
+      // Search in description
+      searchConditions.push({ description: { contains: search, mode: 'insensitive' } });
+
+      // Search in asset name and ID
+      const assets = await this.prisma.asset.findMany({
+        where: {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { id: { contains: search, mode: 'insensitive' } },
+            { serialNumber: { contains: search, mode: 'insensitive' } },
+          ],
+          isDeleted: false,
+        },
+        select: { id: true },
+      });
+
+      if (assets.length > 0) {
+        searchConditions.push({ assetId: { in: assets.map(a => a.id) } });
+      }
+
+      // Search in user name
+      const users = await this.prisma.user.findMany({
+        where: {
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { username: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+
+      if (users.length > 0) {
+        searchConditions.push({ reportedBy: { in: users.map(u => u.id) } });
+      }
+
+      if (searchConditions.length > 0) {
+        where.OR = searchConditions;
+      } else {
+        // No matches found in any search field
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
+    }
+
+    const [complaints, total] = await Promise.all([
+      this.prisma.complaint.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.complaint.count({ where }),
+    ]);
+
+    const data = await Promise.all(
+      complaints.map(async (complaint) => {
+        const asset = await this.prisma.asset.findUnique({
+          where: { id: complaint.assetId },
+          select: { 
+            name: true,
+            category: true,
+            status: true,
+            serialNumber: true,
+            location: true,
+          },
+        });
+
+        const user = await this.prisma.user.findUnique({
+          where: { id: complaint.reportedBy },
+          select: { fullName: true },
+        });
+
+        return {
+          id: complaint.id,
+          assetId: complaint.assetId,
+          assetName: asset?.name || 'Unknown',
+          assetCategory: asset?.category || 'UNKNOWN',
+          assetStatus: asset?.status || 'UNKNOWN',
+          assetSerialNumber: asset?.serialNumber || '-',
+          assetLocation: asset?.location || '-',
+          description: complaint.description,
+          status: complaint.status,
+          reportedBy: user?.fullName || 'Unknown User',
+          reportedById: complaint.reportedBy,
+          imageUrl: complaint.imageUrl,
+          timestamp: complaint.createdAt,
+        };
+      })
+    );
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async exportComplaints(query?: {
+    search?: string;
+    status?: string;
+    reportedBy?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { search, status, reportedBy, startDate, endDate } = query || {};
+
+    const where: any = {};
+    
+    // Status filter
+    if (status) where.status = status.toUpperCase();
+    
+    // Reported by filter
+    if (reportedBy) {
+      where.reportedBy = reportedBy;
+    }
+    
+    // Date range filter
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    // Search filter - search in asset names, asset IDs, and description
+    if (search) {
+      const searchConditions = [];
+
+      // Search in description
+      searchConditions.push({ description: { contains: search, mode: 'insensitive' } });
+
+      // Search in asset name and ID
+      const assets = await this.prisma.asset.findMany({
+        where: {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { id: { contains: search, mode: 'insensitive' } },
+            { serialNumber: { contains: search, mode: 'insensitive' } },
+          ],
+          isDeleted: false,
+        },
+        select: { id: true },
+      });
+
+      if (assets.length > 0) {
+        searchConditions.push({ assetId: { in: assets.map(a => a.id) } });
+      }
+
+      // Search in user name
+      const users = await this.prisma.user.findMany({
+        where: {
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { username: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+
+      if (users.length > 0) {
+        searchConditions.push({ reportedBy: { in: users.map(u => u.id) } });
+      }
+
+      if (searchConditions.length > 0) {
+        where.OR = searchConditions;
+      } else {
+        // No matches found in any search field
+        return {
+          data: [],
+          total: 0,
+          exportedAt: new Date().toISOString(),
+        };
+      }
+    }
+
     const complaints = await this.prisma.complaint.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -146,21 +636,33 @@ export class AdminService {
       complaints.map(async (complaint) => {
         const asset = await this.prisma.asset.findUnique({
           where: { id: complaint.assetId },
-          select: { name: true },
+          select: { 
+            name: true,
+            category: true,
+            status: true,
+            serialNumber: true,
+            location: true,
+          },
         });
 
-        const user = await this.prisma.user.findFirst({
-          where: { username: complaint.reportedBy },
-          select: { username: true },
+        const user = await this.prisma.user.findUnique({
+          where: { id: complaint.reportedBy },
+          select: { fullName: true, username: true },
         });
 
         return {
           id: complaint.id,
           assetId: complaint.assetId,
           assetName: asset?.name || 'Unknown',
-          description: '',
+          assetCategory: asset?.category || 'UNKNOWN',
+          assetStatus: asset?.status || 'UNKNOWN',
+          assetSerialNumber: asset?.serialNumber || '-',
+          assetLocation: asset?.location || '-',
+          description: complaint.description,
           status: complaint.status,
-          reportedBy: user?.username || complaint.reportedBy,
+          reportedBy: user?.fullName || 'Unknown User',
+          reportedByUsername: user?.username || '-',
+          imageUrl: complaint.imageUrl || '-',
           createdAt: complaint.createdAt,
         };
       })
@@ -169,6 +671,7 @@ export class AdminService {
     return {
       data,
       total: data.length,
+      exportedAt: new Date().toISOString(),
     };
   }
 
@@ -280,6 +783,125 @@ export class AdminService {
     });
   }
 
+  async getUserById(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        username: true,
+        role: true,
+        designation: true,
+        phone: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  async updateUser(id: string, updateUserDto: UpdateUserDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Check for duplicate username if username is being updated
+    if (updateUserDto.username && updateUserDto.username !== user.username) {
+      const existingUsername = await this.prisma.user.findUnique({
+        where: { username: updateUserDto.username },
+      });
+
+      if (existingUsername) {
+        throw new ConflictException('Username already exists');
+      }
+    }
+
+    // Check for duplicate email if email is being updated
+    if (updateUserDto.email && updateUserDto.email !== user.email) {
+      const existingEmail = await this.prisma.user.findUnique({
+        where: { email: updateUserDto.email },
+      });
+
+      if (existingEmail) {
+        throw new ConflictException('Email already exists');
+      }
+    }
+
+    // Prepare update data
+    const updateData: any = {
+      fullName: updateUserDto.fullName,
+      email: updateUserDto.email,
+      username: updateUserDto.username,
+      role: updateUserDto.role,
+      designation: updateUserDto.designation,
+      phone: updateUserDto.phone,
+      isActive: updateUserDto.isActive,
+    };
+
+    // Hash password if provided
+    if (updateUserDto.password) {
+      updateData.password = await bcrypt.hash(updateUserDto.password, 10);
+    }
+
+    // Remove undefined fields
+    Object.keys(updateData).forEach(
+      key => updateData[key] === undefined && delete updateData[key]
+    );
+
+    return this.prisma.user.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        username: true,
+        role: true,
+        designation: true,
+        phone: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  async deleteUser(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Prevent deleting the last admin
+    if (user.role === 'ADMIN') {
+      const adminCount = await this.prisma.user.count({
+        where: { role: 'ADMIN' },
+      });
+
+      if (adminCount <= 1) {
+        throw new BadRequestException('Cannot delete the last admin user');
+      }
+    }
+
+    await this.prisma.user.delete({
+      where: { id },
+    });
+
+    return { message: 'User deleted successfully' };
+  }
+
   async generateQrCodes(generateQrDto: GenerateQrDto) {
     try {
       const { count } = generateQrDto;
@@ -289,73 +911,39 @@ export class AdminService {
         throw new BadRequestException('Count must be a number between 1 and 100');
       }
 
-      const qrCodes = [];
-      const generatedCodes = new Set<string>();
+      // Find the last QR code with the new format (5-digit zero-padded)
+      const allQrCodes = await this.prisma.qrCode.findMany({
+        orderBy: { createdAt: 'desc' },
+        select: { code: true },
+      });
 
-      // Generate unique codes
-      while (qrCodes.length < count) {
-        const randomNum = Math.floor(100000 + Math.random() * 900000);
-        const code = `QR-${randomNum}`;
+      // Filter for new format QR codes (QR-00101, QR-00102, etc.) - 5 digits with leading zeros
+      const newFormatCodes = allQrCodes.filter(qr => {
+        const match = qr.code.match(/^QR-(\d{5})$/);
+        return match !== null;
+      });
 
-        // Skip if already generated in this batch
-        if (generatedCodes.has(code)) {
-          continue;
+      // Extract the number from the last QR code in new format
+      let nextNumber = 101; // Start from 101 if no QR codes exist (will be formatted as 00101)
+      if (newFormatCodes.length > 0) {
+        const match = newFormatCodes[0].code.match(/QR-(\d+)/);
+        if (match && match[1]) {
+          nextNumber = parseInt(match[1], 10) + 1;
         }
+      }
 
-        generatedCodes.add(code);
+      // Generate sequential QR codes with 5-digit zero-padded format
+      const qrCodes = [];
+      for (let i = 0; i < count; i++) {
+        const formattedNumber = String(nextNumber + i).padStart(5, '0');
+        const code = `QR-${formattedNumber}`;
         qrCodes.push({
           code,
           isAssigned: false,
         });
       }
 
-      // Check for existing codes in database
-      const existingCodes = await this.prisma.qrCode.findMany({
-        where: {
-          code: {
-            in: Array.from(generatedCodes),
-          },
-        },
-        select: { code: true },
-      });
-
-      // If any codes already exist, regenerate those
-      if (existingCodes.length > 0) {
-        const existingCodeSet = new Set(existingCodes.map((qr) => qr.code));
-        const finalCodes = qrCodes.filter((qr) => !existingCodeSet.has(qr.code));
-        const needMore = count - finalCodes.length;
-
-        // Regenerate the conflicting ones
-        for (let i = 0; i < needMore; i++) {
-          let attempts = 0;
-          let newCode: string;
-
-          do {
-            const randomNum = Math.floor(100000 + Math.random() * 900000);
-            newCode = `QR-${randomNum}`;
-            attempts++;
-
-            if (attempts > 1000) {
-              throw new BadRequestException('Unable to generate unique QR codes');
-            }
-          } while (
-            generatedCodes.has(newCode) ||
-            existingCodeSet.has(newCode)
-          );
-
-          generatedCodes.add(newCode);
-          finalCodes.push({
-            code: newCode,
-            isAssigned: false,
-          });
-        }
-
-        // Replace with final codes
-        qrCodes.length = 0;
-        qrCodes.push(...finalCodes);
-      }
-
-      // Bulk insert with skipDuplicates to handle race conditions
+      // Bulk insert
       await this.prisma.qrCode.createMany({
         data: qrCodes,
         skipDuplicates: true,
@@ -368,12 +956,14 @@ export class AdminService {
             in: qrCodes.map((qr) => qr.code),
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { code: 'asc' },
       });
 
       return {
         count: result.length,
         qrCodes: result,
+        startNumber: nextNumber,
+        endNumber: nextNumber + count - 1,
       };
     } catch (error) {
       console.error('Error generating QR codes:', error);
@@ -425,6 +1015,7 @@ export class AdminService {
       qrCode: qrCode?.code || null,
       createdAt: asset.createdAt,
       lastVerifiedAt: asset.lastVerifiedAt,
+      addedBy: createdByUser?.fullName || 'Unknown',
       createdBy: createdByUser,
     };
   }
@@ -574,24 +1165,30 @@ export class AdminService {
       });
     }
 
-    // Generate new unique QR code
-    let newCode: string;
-    let attempts = 0;
-    do {
-      const randomNum = Math.floor(100000 + Math.random() * 900000);
-      newCode = `QR-${randomNum}`;
-      attempts++;
+    // Generate new unique QR code using sequential numbering (new format only)
+    // Find QR codes with the new format (5-digit zero-padded)
+    const allQrCodes = await this.prisma.qrCode.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: { code: true },
+    });
 
-      if (attempts > 1000) {
-        throw new BadRequestException('Unable to generate unique QR code');
+    // Filter for new format QR codes (QR-00101, QR-00102, etc.) - 5 digits with leading zeros
+    const newFormatCodes = allQrCodes.filter(qr => {
+      const match = qr.code.match(/^QR-(\d{5})$/);
+      return match !== null;
+    });
+
+    // Extract the number from the last QR code in new format
+    let nextNumber = 101; // Start from 101 if no QR codes exist (will be formatted as 00101)
+    if (newFormatCodes.length > 0) {
+      const match = newFormatCodes[0].code.match(/QR-(\d+)/);
+      if (match && match[1]) {
+        nextNumber = parseInt(match[1], 10) + 1;
       }
+    }
 
-      const exists = await this.prisma.qrCode.findUnique({
-        where: { code: newCode },
-      });
-
-      if (!exists) break;
-    } while (true);
+    const formattedNumber = String(nextNumber).padStart(5, '0');
+    const newCode = `QR-${formattedNumber}`;
 
     // Create new QR code and assign to asset
     const newQr = await this.prisma.qrCode.create({
