@@ -130,15 +130,18 @@ export class AdminService {
   async getVerifications(query?: {
     search?: string;
     category?: string;
+    status?: string;
+    verifiedBy?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
     limit?: number;
   }) {
-    const { search, category, startDate, endDate, page = 1, limit = 10 } = query || {};
+    const { search, category, status, verifiedBy, startDate, endDate, page = 1, limit = 10 } = query || {};
     const skip = (page - 1) * limit;
 
     const where: any = {};
+    const assetWhere: any = { isDeleted: false };
     
     // Date range filter
     if (startDate || endDate) {
@@ -147,19 +150,36 @@ export class AdminService {
       if (endDate) where.verifiedAt.lte = new Date(endDate);
     }
 
-    // If category filter is applied, get asset IDs of that category first
+    // Verified by filter
+    if (verifiedBy) {
+      where.verifiedBy = verifiedBy;
+    }
+
+    // Category and status filters - handle at asset level
     if (category) {
+      assetWhere.category = category.toUpperCase() as any;
+    }
+    if (status) {
+      assetWhere.status = status.toUpperCase() as any;
+    }
+
+    // If we have asset-level filters or search, get matching asset IDs first
+    if (category || status || search) {
+      if (search) {
+        assetWhere.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { serialNumber: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+
       const assets = await this.prisma.asset.findMany({
-        where: { 
-          category: category.toUpperCase() as any,
-          isDeleted: false,
-        },
+        where: assetWhere,
         select: { id: true },
       });
       
       const assetIds = assets.map(a => a.id);
       if (assetIds.length === 0) {
-        // No assets in this category, return empty result
+        // No assets match the filters, return empty result
         return {
           data: [],
           meta: {
@@ -172,6 +192,34 @@ export class AdminService {
       }
       
       where.assetId = { in: assetIds };
+    }
+
+    // Also filter by user name if search is provided and no asset matches
+    let userIds: string[] = [];
+    if (search && !category && !status) {
+      const users = await this.prisma.user.findMany({
+        where: {
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { username: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+      userIds = users.map(u => u.id);
+
+      // Combine asset and user filters with OR
+      if (where.assetId || userIds.length > 0) {
+        const orConditions = [];
+        if (where.assetId) orConditions.push({ assetId: where.assetId });
+        if (userIds.length > 0) orConditions.push({ verifiedBy: { in: userIds } });
+        
+        // Remove assetId from where and use OR instead
+        delete where.assetId;
+        if (orConditions.length > 0) {
+          where.OR = orConditions;
+        }
+      }
     }
 
     const [logs, total] = await Promise.all([
@@ -188,7 +236,13 @@ export class AdminService {
       logs.map(async (log) => {
         const asset = await this.prisma.asset.findUnique({
           where: { id: log.assetId },
-          select: { name: true },
+          select: { 
+            name: true,
+            category: true,
+            status: true,
+            serialNumber: true,
+            location: true,
+          },
         });
 
         const user = await this.prisma.user.findUnique({
@@ -197,52 +251,185 @@ export class AdminService {
         });
 
         return {
+          id: log.id,
           assetId: log.assetId,
           assetName: asset?.name || 'Unknown',
+          assetCategory: asset?.category || 'UNKNOWN',
+          assetStatus: asset?.status || 'UNKNOWN',
+          assetSerialNumber: asset?.serialNumber || '-',
+          assetLocation: asset?.location || '-',
           verifiedBy: user?.fullName || 'Unknown User',
+          verifiedById: log.verifiedBy,
           timestamp: log.verifiedAt,
         };
       })
     );
 
-    // Apply search filter on the results (after fetching asset names)
-    let filteredData = data;
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filteredData = data.filter(
-        (item) =>
-          item.assetName.toLowerCase().includes(searchLower) ||
-          item.verifiedBy.toLowerCase().includes(searchLower)
-      );
-    }
-
     return {
-      data: filteredData,
+      data,
       meta: {
-        total: search ? filteredData.length : total,
+        total,
         page,
         limit,
-        totalPages: Math.ceil((search ? filteredData.length : total) / limit),
+        totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+
+  async exportVerifications(query?: {
+    search?: string;
+    category?: string;
+    status?: string;
+    verifiedBy?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { search, category, status, verifiedBy, startDate, endDate } = query || {};
+
+    const where: any = {};
+    const assetWhere: any = { isDeleted: false };
+    
+    // Date range filter
+    if (startDate || endDate) {
+      where.verifiedAt = {};
+      if (startDate) where.verifiedAt.gte = new Date(startDate);
+      if (endDate) where.verifiedAt.lte = new Date(endDate);
+    }
+
+    // Verified by filter
+    if (verifiedBy) {
+      where.verifiedBy = verifiedBy;
+    }
+
+    // Category and status filters - handle at asset level
+    if (category) {
+      assetWhere.category = category.toUpperCase() as any;
+    }
+    if (status) {
+      assetWhere.status = status.toUpperCase() as any;
+    }
+
+    // If we have asset-level filters or search, get matching asset IDs first
+    if (category || status || search) {
+      if (search) {
+        assetWhere.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { serialNumber: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+
+      const assets = await this.prisma.asset.findMany({
+        where: assetWhere,
+        select: { id: true },
+      });
+      
+      const assetIds = assets.map(a => a.id);
+      if (assetIds.length === 0) {
+        // No assets match the filters
+        return {
+          data: [],
+          total: 0,
+          exportedAt: new Date().toISOString(),
+        };
+      }
+      
+      where.assetId = { in: assetIds };
+    }
+
+    // Also filter by user name if search is provided
+    let userIds: string[] = [];
+    if (search && !category && !status) {
+      const users = await this.prisma.user.findMany({
+        where: {
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { username: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+      userIds = users.map(u => u.id);
+
+      // Combine asset and user filters with OR
+      if (where.assetId || userIds.length > 0) {
+        const orConditions = [];
+        if (where.assetId) orConditions.push({ assetId: where.assetId });
+        if (userIds.length > 0) orConditions.push({ verifiedBy: { in: userIds } });
+        
+        // Remove assetId from where and use OR instead
+        delete where.assetId;
+        if (orConditions.length > 0) {
+          where.OR = orConditions;
+        }
+      }
+    }
+
+    const logs = await this.prisma.verificationLog.findMany({
+      where,
+      orderBy: { verifiedAt: 'desc' },
+    });
+
+    const data = await Promise.all(
+      logs.map(async (log) => {
+        const asset = await this.prisma.asset.findUnique({
+          where: { id: log.assetId },
+          select: { 
+            name: true,
+            category: true,
+            status: true,
+            serialNumber: true,
+            location: true,
+          },
+        });
+
+        const user = await this.prisma.user.findUnique({
+          where: { id: log.verifiedBy },
+          select: { fullName: true, username: true },
+        });
+
+        return {
+          id: log.id,
+          assetId: log.assetId,
+          assetName: asset?.name || 'Unknown',
+          assetCategory: asset?.category || 'UNKNOWN',
+          assetStatus: asset?.status || 'UNKNOWN',
+          assetSerialNumber: asset?.serialNumber || '-',
+          assetLocation: asset?.location || '-',
+          verifiedBy: user?.fullName || 'Unknown User',
+          verifiedByUsername: user?.username || '-',
+          verifiedAt: log.verifiedAt,
+        };
+      })
+    );
+
+    return {
+      data,
+      total: data.length,
+      exportedAt: new Date().toISOString(),
     };
   }
 
   async getComplaints(query?: {
     search?: string;
-    category?: string;
     status?: string;
+    reportedBy?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
     limit?: number;
   }) {
-    const { search, category, status, startDate, endDate, page = 1, limit = 10 } = query || {};
+    const { search, status, reportedBy, startDate, endDate, page = 1, limit = 10 } = query || {};
     const skip = (page - 1) * limit;
 
     const where: any = {};
     
     // Status filter
     if (status) where.status = status.toUpperCase();
+    
+    // Reported by filter
+    if (reportedBy) {
+      where.reportedBy = reportedBy;
+    }
     
     // Date range filter
     if (startDate || endDate) {
@@ -251,19 +438,49 @@ export class AdminService {
       if (endDate) where.createdAt.lte = new Date(endDate);
     }
 
-    // If category filter is applied, get asset IDs of that category first
-    if (category) {
+    // Search filter - search in asset names, asset IDs, and description
+    if (search) {
+      const searchConditions = [];
+
+      // Search in description
+      searchConditions.push({ description: { contains: search, mode: 'insensitive' } });
+
+      // Search in asset name and ID
       const assets = await this.prisma.asset.findMany({
-        where: { 
-          category: category.toUpperCase() as any,
+        where: {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { id: { contains: search, mode: 'insensitive' } },
+            { serialNumber: { contains: search, mode: 'insensitive' } },
+          ],
           isDeleted: false,
         },
         select: { id: true },
       });
-      
-      const assetIds = assets.map(a => a.id);
-      if (assetIds.length === 0) {
-        // No assets in this category, return empty result
+
+      if (assets.length > 0) {
+        searchConditions.push({ assetId: { in: assets.map(a => a.id) } });
+      }
+
+      // Search in user name
+      const users = await this.prisma.user.findMany({
+        where: {
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { username: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+
+      if (users.length > 0) {
+        searchConditions.push({ reportedBy: { in: users.map(u => u.id) } });
+      }
+
+      if (searchConditions.length > 0) {
+        where.OR = searchConditions;
+      } else {
+        // No matches found in any search field
         return {
           data: [],
           meta: {
@@ -274,8 +491,6 @@ export class AdminService {
           },
         };
       }
-      
-      where.assetId = { in: assetIds };
     }
 
     const [complaints, total] = await Promise.all([
@@ -292,7 +507,13 @@ export class AdminService {
       complaints.map(async (complaint) => {
         const asset = await this.prisma.asset.findUnique({
           where: { id: complaint.assetId },
-          select: { name: true },
+          select: { 
+            name: true,
+            category: true,
+            status: true,
+            serialNumber: true,
+            location: true,
+          },
         });
 
         const user = await this.prisma.user.findUnique({
@@ -304,34 +525,153 @@ export class AdminService {
           id: complaint.id,
           assetId: complaint.assetId,
           assetName: asset?.name || 'Unknown',
+          assetCategory: asset?.category || 'UNKNOWN',
+          assetStatus: asset?.status || 'UNKNOWN',
+          assetSerialNumber: asset?.serialNumber || '-',
+          assetLocation: asset?.location || '-',
           description: complaint.description,
           status: complaint.status,
           reportedBy: user?.fullName || 'Unknown User',
+          reportedById: complaint.reportedBy,
+          imageUrl: complaint.imageUrl,
           timestamp: complaint.createdAt,
         };
       })
     );
 
-    // Apply search filter on the results (after fetching asset names)
-    let filteredData = data;
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filteredData = data.filter(
-        (item) =>
-          item.assetName.toLowerCase().includes(searchLower) ||
-          item.reportedBy.toLowerCase().includes(searchLower) ||
-          item.description.toLowerCase().includes(searchLower)
-      );
-    }
-
     return {
-      data: filteredData,
+      data,
       meta: {
-        total: search ? filteredData.length : total,
+        total,
         page,
         limit,
-        totalPages: Math.ceil((search ? filteredData.length : total) / limit),
+        totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+
+  async exportComplaints(query?: {
+    search?: string;
+    status?: string;
+    reportedBy?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const { search, status, reportedBy, startDate, endDate } = query || {};
+
+    const where: any = {};
+    
+    // Status filter
+    if (status) where.status = status.toUpperCase();
+    
+    // Reported by filter
+    if (reportedBy) {
+      where.reportedBy = reportedBy;
+    }
+    
+    // Date range filter
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    // Search filter - search in asset names, asset IDs, and description
+    if (search) {
+      const searchConditions = [];
+
+      // Search in description
+      searchConditions.push({ description: { contains: search, mode: 'insensitive' } });
+
+      // Search in asset name and ID
+      const assets = await this.prisma.asset.findMany({
+        where: {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { id: { contains: search, mode: 'insensitive' } },
+            { serialNumber: { contains: search, mode: 'insensitive' } },
+          ],
+          isDeleted: false,
+        },
+        select: { id: true },
+      });
+
+      if (assets.length > 0) {
+        searchConditions.push({ assetId: { in: assets.map(a => a.id) } });
+      }
+
+      // Search in user name
+      const users = await this.prisma.user.findMany({
+        where: {
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { username: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+
+      if (users.length > 0) {
+        searchConditions.push({ reportedBy: { in: users.map(u => u.id) } });
+      }
+
+      if (searchConditions.length > 0) {
+        where.OR = searchConditions;
+      } else {
+        // No matches found in any search field
+        return {
+          data: [],
+          total: 0,
+          exportedAt: new Date().toISOString(),
+        };
+      }
+    }
+
+    const complaints = await this.prisma.complaint.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const data = await Promise.all(
+      complaints.map(async (complaint) => {
+        const asset = await this.prisma.asset.findUnique({
+          where: { id: complaint.assetId },
+          select: { 
+            name: true,
+            category: true,
+            status: true,
+            serialNumber: true,
+            location: true,
+          },
+        });
+
+        const user = await this.prisma.user.findUnique({
+          where: { id: complaint.reportedBy },
+          select: { fullName: true, username: true },
+        });
+
+        return {
+          id: complaint.id,
+          assetId: complaint.assetId,
+          assetName: asset?.name || 'Unknown',
+          assetCategory: asset?.category || 'UNKNOWN',
+          assetStatus: asset?.status || 'UNKNOWN',
+          assetSerialNumber: asset?.serialNumber || '-',
+          assetLocation: asset?.location || '-',
+          description: complaint.description,
+          status: complaint.status,
+          reportedBy: user?.fullName || 'Unknown User',
+          reportedByUsername: user?.username || '-',
+          imageUrl: complaint.imageUrl || '-',
+          createdAt: complaint.createdAt,
+        };
+      })
+    );
+
+    return {
+      data,
+      total: data.length,
+      exportedAt: new Date().toISOString(),
     };
   }
 

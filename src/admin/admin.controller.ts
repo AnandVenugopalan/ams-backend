@@ -22,10 +22,33 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @Get('verifications/export/data')
+  exportVerifications(
+    @Query('search') search?: string,
+    @Query('category') category?: string,
+    @Query('status') status?: string,
+    @Query('verifiedBy') verifiedBy?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.adminService.exportVerifications({
+      search,
+      category,
+      status,
+      verifiedBy,
+      startDate,
+      endDate,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   @Get('verifications')
   getVerifications(
     @Query('search') search?: string,
     @Query('category') category?: string,
+    @Query('status') status?: string,
+    @Query('verifiedBy') verifiedBy?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
@@ -34,6 +57,8 @@ export class AdminController {
     return this.adminService.getVerifications({
       search,
       category,
+      status,
+      verifiedBy,
       startDate,
       endDate,
       page: page ? parseInt(page) : undefined,
@@ -43,11 +68,30 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @Get('complaints/export/data')
+  exportComplaints(
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('reportedBy') reportedBy?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.adminService.exportComplaints({
+      search,
+      status,
+      reportedBy,
+      startDate,
+      endDate,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   @Get('complaints')
   getComplaints(
     @Query('search') search?: string,
-    @Query('category') category?: string,
     @Query('status') status?: string,
+    @Query('reportedBy') reportedBy?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
@@ -55,8 +99,8 @@ export class AdminController {
   ) {
     return this.adminService.getComplaints({
       search,
-      category,
       status,
+      reportedBy,
       startDate,
       endDate,
       page: page ? parseInt(page) : undefined,
