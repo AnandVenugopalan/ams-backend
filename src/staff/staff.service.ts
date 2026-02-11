@@ -228,6 +228,7 @@ export class StaffService {
           assetName: asset?.name || 'Unknown Asset',
           description: complaint.description,
           status: complaint.status,
+          imageUrl: complaint.imageUrl,
           createdAt: complaint.createdAt,
         };
       })
