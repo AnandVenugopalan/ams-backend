@@ -140,6 +140,7 @@ export class AssetService {
           serialNumber: asset.serialNumber || '-',
           status: asset.status,
           location: asset.location,
+          imageUrl: asset.imageUrl,
           lastVerifiedAt: asset.lastVerifiedAt,
           createdAt: asset.createdAt,
         };

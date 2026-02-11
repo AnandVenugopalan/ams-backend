@@ -63,7 +63,7 @@ export class StaffService {
   }
 
   async registerAsset(registerAssetDto: RegisterAssetDto, staffId: string) {
-    const { qrCode, assetName, category, serialNumber, location } = registerAssetDto;
+    const { qrCode, assetName, category, serialNumber, location, imageUrl } = registerAssetDto;
 
     // Find QR code
     const qr = await this.prisma.qrCode.findUnique({
@@ -86,6 +86,7 @@ export class StaffService {
         serialNumber,
         location: location || 'Not specified',
         isQrGenerated: true,
+        imageUrl: imageUrl || null,
         registeredBy: staffId,
       },
     });
@@ -228,6 +229,7 @@ export class StaffService {
           assetName: asset?.name || 'Unknown Asset',
           description: complaint.description,
           status: complaint.status,
+          imageUrl: complaint.imageUrl,
           createdAt: complaint.createdAt,
         };
       })
@@ -245,6 +247,7 @@ export class StaffService {
         category: true,
         status: true,
         location: true,
+        imageUrl: true,
       },
       orderBy: {
         createdAt: 'desc',

@@ -40,4 +40,15 @@ export class AuthService {
       accessToken,
     };
   }
+
+  async logout(userId: string) {
+    // JWT logout is handled client-side by removing the token
+    // This endpoint confirms the logout action and can be extended
+    // for token blacklisting or session management if needed
+    return {
+      message: 'Logged out successfully',
+      userId,
+      loggedOutAt: new Date().toISOString(),
+    };
+  }
 }

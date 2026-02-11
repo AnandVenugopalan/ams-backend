@@ -1011,7 +1011,7 @@ export class AdminService {
       serialNumber: asset.serialNumber,
       status: asset.status,
       location: asset.location,
-      imageUrl: null, // Asset model doesn't have imageUrl field
+      imageUrl: asset.imageUrl,
       qrCode: qrCode?.code || null,
       createdAt: asset.createdAt,
       lastVerifiedAt: asset.lastVerifiedAt,
