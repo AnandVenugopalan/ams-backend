@@ -18,4 +18,8 @@ export class RegisterAssetDto {
   @IsOptional()
   @IsString()
   location?: string;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
 }
