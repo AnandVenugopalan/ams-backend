@@ -172,6 +172,25 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @Get('assets')
+  getAssets(
+    @Query('search') search?: string,
+    @Query('category') category?: string,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getAssets({
+      search,
+      category,
+      status,
+      page: page ? parseInt(page) : undefined,
+      limit: limit ? parseInt(limit) : undefined,
+    });
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   @Get('assets/:assetId')
   getAssetDetails(@Param('assetId') assetId: string) {
     return this.adminService.getAssetDetails(assetId);

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -8,6 +8,8 @@ import { GenerateQrDto } from './dto/generate-qr.dto';
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(private prisma: PrismaService) { }
 
   async getDashboard() {
@@ -971,6 +973,75 @@ export class AdminService {
         throw error;
       }
       throw new BadRequestException(`Failed to generate QR codes: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  async getAssets(query?: {
+    search?: string;
+    category?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    try {
+      const { search, category, status, page = 1, limit = 10 } = query || {};
+      const skip = (page - 1) * limit;
+
+      const where: any = { isDeleted: false };
+
+      // Search filter
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { serialNumber: { contains: search, mode: 'insensitive' } },
+          { location: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+
+      // Category filter
+      if (category) {
+        where.category = category;
+      }
+
+      // Status filter
+      if (status) {
+        where.status = status;
+      }
+
+      // Fetch assets with pagination
+      const [assets, total] = await Promise.all([
+        this.prisma.asset.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            serialNumber: true,
+            status: true,
+            location: true,
+            imageUrl: true,
+            lastVerifiedAt: true,
+            createdAt: true,
+          },
+        }),
+        this.prisma.asset.count({ where }),
+      ]);
+
+      return {
+        data: assets,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error in getAssets: ${error.message}`, error.stack);
+      throw error;
     }
   }
 
