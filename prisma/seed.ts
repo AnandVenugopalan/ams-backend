@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 
 const prisma = new PrismaClient();
 
@@ -13,12 +14,14 @@ async function main() {
     const hashedPassword = await bcrypt.hash('admin@123', 10);
     await prisma.user.create({
       data: {
+        id: uuidv4(),
         fullName: 'System Admin',
         email: 'admin@ams.com',
         username: 'admin',
         password: hashedPassword,
         role: 'ADMIN',
         isActive: true,
+        updatedAt: new Date(),
       },
     });
     console.log('Admin user created');
@@ -35,12 +38,14 @@ async function main() {
     const hashedPassword = await bcrypt.hash('staff@123', 10);
     await prisma.user.create({
       data: {
+        id: uuidv4(),
         fullName: 'Staff User',
         email: 'staff@ams.com',
         username: 'staff',
         password: hashedPassword,
         role: 'STAFF',
         isActive: true,
+        updatedAt: new Date(),
       },
     });
     console.log('Staff user created');

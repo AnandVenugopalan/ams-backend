@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAssetDto } from './dto/create-asset.dto';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class AssetService {
@@ -9,9 +10,11 @@ export class AssetService {
   create(createAssetDto: CreateAssetDto) {
     return this.prisma.asset.create({
       data: {
+        id: uuidv4(),
         ...createAssetDto,
         status: 'ACTIVE',
         isQrGenerated: false,
+        updatedAt: new Date(),
       },
     });
   }
@@ -62,24 +65,37 @@ export class AssetService {
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
+        select: {
+          id: true,
+          name: true,
+          category: true,
+          serialNumber: true,
+          status: true,
+          location: true,
+          imageUrl: true,
+          lastVerifiedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          isQrGenerated: true,
+        },
       }),
       this.prisma.asset.count({ where }),
     ]);
 
-    // Fetch QR codes for each asset
-    const data = await Promise.all(
-      assets.map(async (asset) => {
-        const qrCode = await this.prisma.qrCode.findFirst({
-          where: { assetId: asset.id },
-          select: { code: true },
-        });
+    // Fetch QR codes for all assets
+    const assetIds = assets.map(a => a.id);
+    const qrCodes = await this.prisma.qrCode.findMany({
+      where: { assetId: { in: assetIds } },
+      select: { assetId: true, code: true },
+    });
+    
+    const qrCodeMap = new Map(qrCodes.map(qr => [qr.assetId, qr.code]));
 
-        return {
-          ...asset,
-          qrCode: qrCode?.code || null,
-        };
-      })
-    );
+    // Map assets to use qrCode as id
+    const data = assets.map(asset => ({
+      ...asset,
+      id: qrCodeMap.get(asset.id) || asset.id, // Use QR code if available, otherwise asset ID
+    }));
 
     return {
       data,

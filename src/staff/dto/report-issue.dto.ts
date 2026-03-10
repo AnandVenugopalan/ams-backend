@@ -3,7 +3,7 @@ import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 export class ReportIssueDto {
   @IsString()
   @IsNotEmpty()
-  assetId: string;
+  qrCode: string;
 
   @IsString()
   @IsNotEmpty()
@@ -13,3 +13,4 @@ export class ReportIssueDto {
   @IsOptional()
   imageUrl?: string;
 }
+
