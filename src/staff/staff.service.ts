@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { v4 as uuidv4 } from 'uuid';
 import { RegisterAssetDto } from './dto/register-asset.dto';
 import { ReportIssueDto } from './dto/report-issue.dto';
 
@@ -18,6 +19,7 @@ export class StaffService {
 
     await this.prisma.verificationLog.create({
       data: {
+        id: uuidv4(),
         assetId,
         verifiedBy,
       },
@@ -49,6 +51,7 @@ export class StaffService {
     // Insert record into verification log
     await this.prisma.verificationLog.create({
       data: {
+        id: uuidv4(),
         assetId,
         verifiedBy,
         verifiedAt: currentTime,
@@ -81,6 +84,7 @@ export class StaffService {
     // Create asset
     const asset = await this.prisma.asset.create({
       data: {
+        id: uuidv4(),
         name: assetName,
         category,
         serialNumber,
@@ -88,6 +92,7 @@ export class StaffService {
         isQrGenerated: true,
         imageUrl: imageUrl || null,
         registeredBy: staffId,
+        updatedAt: new Date(),
       },
     });
 
@@ -145,11 +150,20 @@ export class StaffService {
   }
 
   async reportIssue(reportIssueDto: ReportIssueDto, staffId: string) {
-    const { assetId, description, imageUrl } = reportIssueDto;
+    const { qrCode, description, imageUrl } = reportIssueDto;
+
+    // Find QR code and get asset ID
+    const qr = await this.prisma.qrCode.findUnique({
+      where: { code: qrCode },
+    });
+
+    if (!qr || !qr.assetId) {
+      throw new NotFoundException('QR code not found or not assigned to any asset');
+    }
 
     // Validate asset exists
     const asset = await this.prisma.asset.findUnique({
-      where: { id: assetId },
+      where: { id: qr.assetId },
     });
 
     if (!asset) {
@@ -159,7 +173,8 @@ export class StaffService {
     // Create complaint record
     await this.prisma.complaint.create({
       data: {
-        assetId,
+        id: uuidv4(),
+        assetId: qr.assetId,
         reportedBy: staffId,
         description,
         imageUrl: imageUrl || null,

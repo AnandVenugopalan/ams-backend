@@ -7,45 +7,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id          String   @id @default(uuid())
-  username    String   @unique
-  password    String
-  role        UserRole
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  fullName    String
-  email       String   @unique
-  designation String?
-  phone       String?
-}
-
 model Asset {
-  id             String        @id @default(uuid())
+  id             String        @id
   name           String
   category       AssetCategory
   status         AssetStatus   @default(ACTIVE)
   serialNumber   String?       @unique
   location       String
   isQrGenerated  Boolean       @default(false)
-  imageUrl       String?
   createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  updatedAt      DateTime
   lastVerifiedAt DateTime?
   isDeleted      Boolean       @default(false)
   registeredBy   String?
-}
-
-model VerificationLog {
-  id         String   @id @default(uuid())
-  assetId    String
-  verifiedBy String
-  verifiedAt DateTime @default(now())
+  imageUrl       String?
 }
 
 model Complaint {
-  id          String          @id @default(uuid())
+  id          String          @id
   assetId     String
   reportedBy  String
   createdAt   DateTime        @default(now())
@@ -55,7 +34,7 @@ model Complaint {
 }
 
 model QrCode {
-  id           String   @id @default(uuid())
+  id           String   @id
   code         String   @unique
   isAssigned   Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -63,16 +42,25 @@ model QrCode {
   registeredBy String?
 }
 
-enum UserRole {
-  ADMIN
-  STAFF
+model User {
+  id          String   @id
+  username    String   @unique
+  password    String
+  role        UserRole
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  fullName    String
+  email       String   @unique
+  designation String?
+  phone       String?
 }
 
-enum AssetStatus {
-  ACTIVE
-  MAINTENANCE
-  RETIRED
-  LOST
+model VerificationLog {
+  id         String   @id
+  assetId    String
+  verifiedBy String
+  verifiedAt DateTime @default(now())
 }
 
 enum AssetCategory {
@@ -83,7 +71,19 @@ enum AssetCategory {
   OTHER
 }
 
+enum AssetStatus {
+  ACTIVE
+  MAINTENANCE
+  RETIRED
+  LOST
+}
+
 enum ComplaintStatus {
   PENDING
   RESOLVED
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
 }

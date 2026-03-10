@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -734,6 +735,7 @@ export class AdminService {
     // Create user
     const user = await this.prisma.user.create({
       data: {
+        id: uuidv4(),
         fullName: createUserDto.fullName,
         email: createUserDto.email,
         username: createUserDto.username,
@@ -742,6 +744,7 @@ export class AdminService {
         designation: createUserDto.designation,
         phone: createUserDto.phone,
         isActive: createUserDto.isActive,
+        updatedAt: new Date(),
       },
       select: {
         id: true,
@@ -934,12 +937,13 @@ export class AdminService {
         }
       }
 
-      // Generate sequential QR codes with 5-digit zero-padded format
+      // Generate sequential QR codes with 6-digit zero-padded format
       const qrCodes = [];
       for (let i = 0; i < count; i++) {
-        const formattedNumber = String(nextNumber + i).padStart(5, '0');
+        const formattedNumber = String(nextNumber + i).padStart(6, '0');
         const code = `QR-${formattedNumber}`;
         qrCodes.push({
+          id: uuidv4(),
           code,
           isAssigned: false,
         });
@@ -1258,12 +1262,13 @@ export class AdminService {
       }
     }
 
-    const formattedNumber = String(nextNumber).padStart(5, '0');
+    const formattedNumber = String(nextNumber).padStart(6, '0');
     const newCode = `QR-${formattedNumber}`;
 
     // Create new QR code and assign to asset
     const newQr = await this.prisma.qrCode.create({
       data: {
+        id: uuidv4(),
         code: newCode,
         isAssigned: true,
         assetId: assetId,
