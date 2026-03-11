@@ -84,7 +84,7 @@ export class StaffService {
     // Create asset
     const asset = await this.prisma.asset.create({
       data: {
-        id: uuidv4(),
+        id: qrCode,
         name: assetName,
         category,
         serialNumber,

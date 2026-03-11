@@ -922,9 +922,9 @@ export class AdminService {
         select: { code: true },
       });
 
-      // Filter for new format QR codes (QR-00101, QR-00102, etc.) - 5 digits with leading zeros
+      // Filter for new format QR codes (QR-000101, QR-000102, etc.) - 6 digits with leading zeros
       const newFormatCodes = allQrCodes.filter(qr => {
-        const match = qr.code.match(/^QR-(\d{5})$/);
+        const match = qr.code.match(/^QR-(\d{6})$/);
         return match !== null;
       });
 
