@@ -3,7 +3,7 @@ import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 export class ReportIssueDto {
   @IsString()
   @IsNotEmpty()
-  qrCode: string;
+  assetId: string;
 
   @IsString()
   @IsNotEmpty()
