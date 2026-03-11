@@ -922,16 +922,16 @@ export class AdminService {
         select: { code: true },
       });
 
-      // Filter for new format QR codes (QR-000101, QR-000102, etc.) - 6 digits with leading zeros
+      // Filter for new format QR codes (ID-000101, ID-000102, etc.) - 6 digits with leading zeros
       const newFormatCodes = allQrCodes.filter(qr => {
-        const match = qr.code.match(/^QR-(\d{6})$/);
+        const match = qr.code.match(/^ID-(\d{6})$/);
         return match !== null;
       });
 
       // Extract the number from the last QR code in new format
-      let nextNumber = 101; // Start from 101 if no QR codes exist (will be formatted as 00101)
+      let nextNumber = 101; // Start from 101 if no QR codes exist (will be formatted as 000101)
       if (newFormatCodes.length > 0) {
-        const match = newFormatCodes[0].code.match(/QR-(\d+)/);
+        const match = newFormatCodes[0].code.match(/ID-(\d+)/);
         if (match && match[1]) {
           nextNumber = parseInt(match[1], 10) + 1;
         }
@@ -941,7 +941,7 @@ export class AdminService {
       const qrCodes = [];
       for (let i = 0; i < count; i++) {
         const formattedNumber = String(nextNumber + i).padStart(6, '0');
-        const code = `QR-${formattedNumber}`;
+        const code = `ID-${formattedNumber}`;
         qrCodes.push({
           id: uuidv4(),
           code,
@@ -1004,12 +1004,12 @@ export class AdminService {
 
       // Category filter
       if (category) {
-        where.category = category;
+        where.category = category.toUpperCase();
       }
 
       // Status filter
       if (status) {
-        where.status = status;
+        where.status = status.toUpperCase();
       }
 
       // Fetch assets with pagination
@@ -1247,23 +1247,23 @@ export class AdminService {
       select: { code: true },
     });
 
-    // Filter for new format QR codes (QR-00101, QR-00102, etc.) - 5 digits with leading zeros
+    // Filter for new format QR codes (ID-000101, ID-000102, etc.) - 6 digits with leading zeros
     const newFormatCodes = allQrCodes.filter(qr => {
-      const match = qr.code.match(/^QR-(\d{5})$/);
+      const match = qr.code.match(/^ID-(\d{6})$/);
       return match !== null;
     });
 
     // Extract the number from the last QR code in new format
-    let nextNumber = 101; // Start from 101 if no QR codes exist (will be formatted as 00101)
+    let nextNumber = 101; // Start from 101 if no QR codes exist (will be formatted as 000101)
     if (newFormatCodes.length > 0) {
-      const match = newFormatCodes[0].code.match(/QR-(\d+)/);
+      const match = newFormatCodes[0].code.match(/ID-(\d+)/);
       if (match && match[1]) {
         nextNumber = parseInt(match[1], 10) + 1;
       }
     }
 
     const formattedNumber = String(nextNumber).padStart(6, '0');
-    const newCode = `QR-${formattedNumber}`;
+    const newCode = `ID-${formattedNumber}`;
 
     // Create new QR code and assign to asset
     const newQr = await this.prisma.qrCode.create({
