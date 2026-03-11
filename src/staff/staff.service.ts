@@ -137,6 +137,7 @@ export class StaffService {
           serialNumber: asset.serialNumber,
           status: asset.status,
           location: asset.location,
+          imageUrl: asset.imageUrl,
         } : null,
       };
     }
@@ -150,20 +151,11 @@ export class StaffService {
   }
 
   async reportIssue(reportIssueDto: ReportIssueDto, staffId: string) {
-    const { qrCode, description, imageUrl } = reportIssueDto;
-
-    // Find QR code and get asset ID
-    const qr = await this.prisma.qrCode.findUnique({
-      where: { code: qrCode },
-    });
-
-    if (!qr || !qr.assetId) {
-      throw new NotFoundException('QR code not found or not assigned to any asset');
-    }
+    const { assetId, description, imageUrl } = reportIssueDto;
 
     // Validate asset exists
     const asset = await this.prisma.asset.findUnique({
-      where: { id: qr.assetId },
+      where: { id: assetId },
     });
 
     if (!asset) {
@@ -174,7 +166,7 @@ export class StaffService {
     await this.prisma.complaint.create({
       data: {
         id: uuidv4(),
-        assetId: qr.assetId,
+        assetId: assetId,
         reportedBy: staffId,
         description,
         imageUrl: imageUrl || null,
