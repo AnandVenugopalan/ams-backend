@@ -153,9 +153,28 @@ export class AdminService {
       if (endDate) where.verifiedAt.lte = new Date(endDate);
     }
 
-    // Verified by filter
+    // Verified by filter - convert name to user ID
     if (verifiedBy) {
-      where.verifiedBy = verifiedBy;
+      const user = await this.prisma.user.findFirst({
+        where: {
+          fullName: { equals: verifiedBy, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (user) {
+        where.verifiedBy = user.id;
+      } else {
+        // No user found with this name, return empty result
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
     }
 
     // Category and status filters - handle at asset level
@@ -299,9 +318,24 @@ export class AdminService {
       if (endDate) where.verifiedAt.lte = new Date(endDate);
     }
 
-    // Verified by filter
+    // Verified by filter - convert name to user ID
     if (verifiedBy) {
-      where.verifiedBy = verifiedBy;
+      const user = await this.prisma.user.findFirst({
+        where: {
+          fullName: { equals: verifiedBy, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (user) {
+        where.verifiedBy = user.id;
+      } else {
+        // No user found with this name, return empty result
+        return {
+          data: [],
+          total: 0,
+          exportedAt: new Date().toISOString(),
+        };
+      }
     }
 
     // Category and status filters - handle at asset level
