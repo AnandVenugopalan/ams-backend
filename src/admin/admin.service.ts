@@ -153,9 +153,28 @@ export class AdminService {
       if (endDate) where.verifiedAt.lte = new Date(endDate);
     }
 
-    // Verified by filter
+    // Verified by filter - convert name to user ID
     if (verifiedBy) {
-      where.verifiedBy = verifiedBy;
+      const user = await this.prisma.user.findFirst({
+        where: {
+          fullName: { equals: verifiedBy, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (user) {
+        where.verifiedBy = user.id;
+      } else {
+        // No user found with this name, return empty result
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
     }
 
     // Category and status filters - handle at asset level
@@ -299,9 +318,24 @@ export class AdminService {
       if (endDate) where.verifiedAt.lte = new Date(endDate);
     }
 
-    // Verified by filter
+    // Verified by filter - convert name to user ID
     if (verifiedBy) {
-      where.verifiedBy = verifiedBy;
+      const user = await this.prisma.user.findFirst({
+        where: {
+          fullName: { equals: verifiedBy, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (user) {
+        where.verifiedBy = user.id;
+      } else {
+        // No user found with this name, return empty result
+        return {
+          data: [],
+          total: 0,
+          exportedAt: new Date().toISOString(),
+        };
+      }
     }
 
     // Category and status filters - handle at asset level
@@ -415,13 +449,14 @@ export class AdminService {
   async getComplaints(query?: {
     search?: string;
     status?: string;
+    category?: string;
     reportedBy?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
     limit?: number;
   }) {
-    const { search, status, reportedBy, startDate, endDate, page = 1, limit = 10 } = query || {};
+    const { search, status, category, reportedBy, startDate, endDate, page = 1, limit = 10 } = query || {};
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -439,6 +474,33 @@ export class AdminService {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
       if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    // Category filter - get assets by category first
+    if (category) {
+      const categoryAssets = await this.prisma.asset.findMany({
+        where: {
+          category: category.toUpperCase() as any,
+          isDeleted: false,
+        },
+        select: { id: true },
+      });
+
+      const categoryAssetIds = categoryAssets.map(a => a.id);
+      if (categoryAssetIds.length === 0) {
+        // No assets found with this category
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
+
+      where.assetId = { in: categoryAssetIds };
     }
 
     // Search filter - search in asset names, asset IDs, and description
@@ -678,7 +740,7 @@ export class AdminService {
     };
   }
 
-  async resolveComplaint(id: string) {
+  async resolveComplaint(id: string, resolveData: any) {
     const complaint = await this.prisma.complaint.findUnique({
       where: { id },
     });
@@ -689,8 +751,59 @@ export class AdminService {
 
     return this.prisma.complaint.update({
       where: { id },
-      data: { status: 'RESOLVED' },
+      data: { 
+        status: 'RESOLVED',
+        resolution: resolveData.resolution,
+      },
     });
+  }
+
+  async getComplaintById(complaintId: string) {
+    const complaint = await this.prisma.complaint.findUnique({
+      where: { id: complaintId },
+    });
+
+    if (!complaint) {
+      throw new NotFoundException('Complaint not found');
+    }
+
+    // Fetch asset details
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: complaint.assetId },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        status: true,
+        serialNumber: true,
+        imageUrl: true,
+      },
+    });
+
+    // Fetch reported by user details
+    const reportedByUser = await this.prisma.user.findUnique({
+      where: { id: complaint.reportedBy },
+      select: {
+        fullName: true,
+      },
+    });
+
+    return {
+      id: complaint.id,
+      status: complaint.status,
+      description: complaint.description,
+      resolution: complaint.resolution || null,
+      assetId: complaint.assetId,
+      assetName: asset?.name || 'Unknown',
+      assetCategory: asset?.category || 'UNKNOWN',
+      assetSerialNumber: asset?.serialNumber || null,
+      assetStatus: asset?.status || 'UNKNOWN',
+      assetImageUrl: asset?.imageUrl || null,
+      reportedBy: reportedByUser?.fullName || 'Unknown User',
+      date: complaint.createdAt,
+      createdAt: complaint.createdAt,
+      imageUrl: complaint.imageUrl || null,
+    };
   }
 
   async getUsers() {
@@ -705,6 +818,7 @@ export class AdminService {
         designation: true,
         phone: true,
         isActive: true,
+        avatarUrl: true,
         createdAt: true,
       },
     });
@@ -744,6 +858,7 @@ export class AdminService {
         designation: createUserDto.designation,
         phone: createUserDto.phone,
         isActive: createUserDto.isActive,
+        avatarUrl: createUserDto.avatarUrl || null,
         updatedAt: new Date(),
       },
       select: {
@@ -755,6 +870,7 @@ export class AdminService {
         designation: true,
         phone: true,
         isActive: true,
+        avatarUrl: true,
         createdAt: true,
       },
     });
@@ -783,6 +899,7 @@ export class AdminService {
         designation: true,
         phone: true,
         isActive: true,
+        avatarUrl: true,
         createdAt: true,
       },
     });
@@ -800,6 +917,7 @@ export class AdminService {
         designation: true,
         phone: true,
         isActive: true,
+        avatarUrl: true,
         createdAt: true,
       },
     });
@@ -851,6 +969,7 @@ export class AdminService {
       designation: updateUserDto.designation,
       phone: updateUserDto.phone,
       isActive: updateUserDto.isActive,
+      avatarUrl: updateUserDto.avatarUrl,
     };
 
     // Hash password if provided
@@ -875,6 +994,7 @@ export class AdminService {
         designation: true,
         phone: true,
         isActive: true,
+        avatarUrl: true,
         createdAt: true,
       },
     });
@@ -905,6 +1025,27 @@ export class AdminService {
     });
 
     return { message: 'User deleted successfully' };
+  }
+
+  async setDefaultAvatarsForUsers() {
+    // Default avatar placeholder image (SVG or any default image URL)
+    const defaultAvatarUrl = 'https://ui-avatars.com/api/?name=User&background=random';
+
+    // Update all users without avatars
+    const result = await this.prisma.user.updateMany({
+      where: {
+        avatarUrl: null,
+      },
+      data: {
+        avatarUrl: defaultAvatarUrl,
+      },
+    });
+
+    return {
+      message: 'Default avatars set successfully',
+      updatedCount: result.count,
+      avatarUrl: defaultAvatarUrl,
+    };
   }
 
   async generateQrCodes(generateQrDto: GenerateQrDto) {
@@ -1278,6 +1419,30 @@ export class AdminService {
     return {
       message: 'QR code regenerated successfully',
       qrCode: newQr.code,
+    };
+  }
+
+  async addToMaintenance(assetId: string) {
+    // Validate asset exists
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: assetId },
+    });
+
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+
+    // Update asset status to MAINTENANCE
+    const updatedAsset = await this.prisma.asset.update({
+      where: { id: assetId },
+      data: {
+        status: 'MAINTENANCE',
+      },
+    });
+
+    return {
+      message: 'Asset added to maintenance successfully',
+      asset: updatedAsset,
     };
   }
 }

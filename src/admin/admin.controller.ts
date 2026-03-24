@@ -8,6 +8,8 @@ import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { GenerateQrDto } from './dto/generate-qr.dto';
 import { UpdateAssetDto } from './dto/update-asset.dto';
+import { ResolveComplaintDto } from './dto/resolve-complaint.dto';
+import { AddToMaintenanceDto } from './dto/add-to-maintenance.dto';
 
 @Controller('admin')
 export class AdminController {
@@ -91,6 +93,7 @@ export class AdminController {
   getComplaints(
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('category') category?: string,
     @Query('reportedBy') reportedBy?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
@@ -100,6 +103,7 @@ export class AdminController {
     return this.adminService.getComplaints({
       search,
       status,
+      category,
       reportedBy,
       startDate,
       endDate,
@@ -111,8 +115,18 @@ export class AdminController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @Patch('complaints/:id/resolve')
-  resolveComplaint(@Param('id') id: string) {
-    return this.adminService.resolveComplaint(id);
+  resolveComplaint(
+    @Param('id') id: string,
+    @Body() resolveComplaintDto: ResolveComplaintDto,
+  ) {
+    return this.adminService.resolveComplaint(id, resolveComplaintDto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('complaints/:complaintId')
+  getComplaintById(@Param('complaintId') complaintId: string) {
+    return this.adminService.getComplaintById(complaintId);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -165,6 +179,13 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @Post('users/avatars/set-defaults')
+  setDefaultAvatars() {
+    return this.adminService.setDefaultAvatarsForUsers();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   @Post('qr/generate')
   generateQrCodes(@Body() generateQrDto: GenerateQrDto) {
     return this.adminService.generateQrCodes(generateQrDto);
@@ -191,46 +212,53 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @Get('assets/:assetId')
-  getAssetDetails(@Param('assetId') assetId: string) {
-    return this.adminService.getAssetDetails(assetId);
+  @Get('assets/:qrCode')
+  getAssetDetails(@Param('qrCode') qrCode: string) {
+    return this.adminService.getAssetDetails(qrCode);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @Get('assets/:assetId/verifications')
-  getAssetVerificationHistory(@Param('assetId') assetId: string) {
-    return this.adminService.getAssetVerificationHistory(assetId);
+  @Get('assets/:qrCode/verifications')
+  getAssetVerificationHistory(@Param('qrCode') qrCode: string) {
+    return this.adminService.getAssetVerificationHistory(qrCode);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @Get('assets/:assetId/complaints')
-  getAssetComplaints(@Param('assetId') assetId: string) {
-    return this.adminService.getAssetComplaints(assetId);
+  @Get('assets/:qrCode/complaints')
+  getAssetComplaints(@Param('qrCode') qrCode: string) {
+    return this.adminService.getAssetComplaints(qrCode);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @Put('assets/:assetId')
+  @Put('assets/:qrCode')
   updateAsset(
-    @Param('assetId') assetId: string,
+    @Param('qrCode') qrCode: string,
     @Body() updateAssetDto: UpdateAssetDto,
   ) {
-    return this.adminService.updateAsset(assetId, updateAssetDto);
+    return this.adminService.updateAsset(qrCode, updateAssetDto);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @Delete('assets/:assetId')
-  deleteAsset(@Param('assetId') assetId: string) {
-    return this.adminService.deleteAsset(assetId);
+  @Delete('assets/:qrCode')
+  deleteAsset(@Param('qrCode') qrCode: string) {
+    return this.adminService.deleteAsset(qrCode);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @Post('assets/:assetId/regenerate-qr')
-  regenerateQrCode(@Param('assetId') assetId: string) {
-    return this.adminService.regenerateQrCode(assetId);
+  @Patch('assets/:assetId/maintenance')
+  addToMaintenance(@Param('assetId') assetId: string) {
+    return this.adminService.addToMaintenance(assetId);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Post('assets/:qrCode/regenerate-qr')
+  regenerateQrCode(@Param('qrCode') qrCode: string) {
+    return this.adminService.regenerateQrCode(qrCode);
   }
 }
