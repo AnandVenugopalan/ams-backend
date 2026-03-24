@@ -28,4 +28,8 @@ export class CreateUserDto {
 
   @IsBoolean()
   isActive: boolean;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }

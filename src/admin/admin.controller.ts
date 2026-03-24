@@ -179,6 +179,13 @@ export class AdminController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @Post('users/avatars/set-defaults')
+  setDefaultAvatars() {
+    return this.adminService.setDefaultAvatarsForUsers();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
   @Post('qr/generate')
   generateQrCodes(@Body() generateQrDto: GenerateQrDto) {
     return this.adminService.generateQrCodes(generateQrDto);

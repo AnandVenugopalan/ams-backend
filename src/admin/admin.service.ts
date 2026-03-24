@@ -818,6 +818,7 @@ export class AdminService {
         designation: true,
         phone: true,
         isActive: true,
+        avatarUrl: true,
         createdAt: true,
       },
     });
@@ -857,6 +858,7 @@ export class AdminService {
         designation: createUserDto.designation,
         phone: createUserDto.phone,
         isActive: createUserDto.isActive,
+        avatarUrl: createUserDto.avatarUrl || null,
         updatedAt: new Date(),
       },
       select: {
@@ -868,6 +870,7 @@ export class AdminService {
         designation: true,
         phone: true,
         isActive: true,
+        avatarUrl: true,
         createdAt: true,
       },
     });
@@ -896,6 +899,7 @@ export class AdminService {
         designation: true,
         phone: true,
         isActive: true,
+        avatarUrl: true,
         createdAt: true,
       },
     });
@@ -913,6 +917,7 @@ export class AdminService {
         designation: true,
         phone: true,
         isActive: true,
+        avatarUrl: true,
         createdAt: true,
       },
     });
@@ -964,6 +969,7 @@ export class AdminService {
       designation: updateUserDto.designation,
       phone: updateUserDto.phone,
       isActive: updateUserDto.isActive,
+      avatarUrl: updateUserDto.avatarUrl,
     };
 
     // Hash password if provided
@@ -988,6 +994,7 @@ export class AdminService {
         designation: true,
         phone: true,
         isActive: true,
+        avatarUrl: true,
         createdAt: true,
       },
     });
@@ -1018,6 +1025,27 @@ export class AdminService {
     });
 
     return { message: 'User deleted successfully' };
+  }
+
+  async setDefaultAvatarsForUsers() {
+    // Default avatar placeholder image (SVG or any default image URL)
+    const defaultAvatarUrl = 'https://ui-avatars.com/api/?name=User&background=random';
+
+    // Update all users without avatars
+    const result = await this.prisma.user.updateMany({
+      where: {
+        avatarUrl: null,
+      },
+      data: {
+        avatarUrl: defaultAvatarUrl,
+      },
+    });
+
+    return {
+      message: 'Default avatars set successfully',
+      updatedCount: result.count,
+      avatarUrl: defaultAvatarUrl,
+    };
   }
 
   async generateQrCodes(generateQrDto: GenerateQrDto) {
