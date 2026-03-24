@@ -712,7 +712,7 @@ export class AdminService {
     };
   }
 
-  async resolveComplaint(id: string) {
+  async resolveComplaint(id: string, resolveData: any) {
     const complaint = await this.prisma.complaint.findUnique({
       where: { id },
     });
@@ -723,8 +723,59 @@ export class AdminService {
 
     return this.prisma.complaint.update({
       where: { id },
-      data: { status: 'RESOLVED' },
+      data: { 
+        status: 'RESOLVED',
+        resolution: resolveData.resolution,
+      },
     });
+  }
+
+  async getComplaintById(complaintId: string) {
+    const complaint = await this.prisma.complaint.findUnique({
+      where: { id: complaintId },
+    });
+
+    if (!complaint) {
+      throw new NotFoundException('Complaint not found');
+    }
+
+    // Fetch asset details
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: complaint.assetId },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        status: true,
+        serialNumber: true,
+        imageUrl: true,
+      },
+    });
+
+    // Fetch reported by user details
+    const reportedByUser = await this.prisma.user.findUnique({
+      where: { id: complaint.reportedBy },
+      select: {
+        fullName: true,
+      },
+    });
+
+    return {
+      id: complaint.id,
+      status: complaint.status,
+      description: complaint.description,
+      resolution: complaint.resolution || null,
+      assetId: complaint.assetId,
+      assetName: asset?.name || 'Unknown',
+      assetCategory: asset?.category || 'UNKNOWN',
+      assetSerialNumber: asset?.serialNumber || null,
+      assetStatus: asset?.status || 'UNKNOWN',
+      assetImageUrl: asset?.imageUrl || null,
+      reportedBy: reportedByUser?.fullName || 'Unknown User',
+      date: complaint.createdAt,
+      createdAt: complaint.createdAt,
+      imageUrl: complaint.imageUrl || null,
+    };
   }
 
   async getUsers() {
@@ -1312,6 +1363,30 @@ export class AdminService {
     return {
       message: 'QR code regenerated successfully',
       qrCode: newQr.code,
+    };
+  }
+
+  async addToMaintenance(assetId: string) {
+    // Validate asset exists
+    const asset = await this.prisma.asset.findUnique({
+      where: { id: assetId },
+    });
+
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+
+    // Update asset status to MAINTENANCE
+    const updatedAsset = await this.prisma.asset.update({
+      where: { id: assetId },
+      data: {
+        status: 'MAINTENANCE',
+      },
+    });
+
+    return {
+      message: 'Asset added to maintenance successfully',
+      asset: updatedAsset,
     };
   }
 }
