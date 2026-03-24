@@ -449,13 +449,14 @@ export class AdminService {
   async getComplaints(query?: {
     search?: string;
     status?: string;
+    category?: string;
     reportedBy?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
     limit?: number;
   }) {
-    const { search, status, reportedBy, startDate, endDate, page = 1, limit = 10 } = query || {};
+    const { search, status, category, reportedBy, startDate, endDate, page = 1, limit = 10 } = query || {};
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -473,6 +474,33 @@ export class AdminService {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
       if (endDate) where.createdAt.lte = new Date(endDate);
+    }
+
+    // Category filter - get assets by category first
+    if (category) {
+      const categoryAssets = await this.prisma.asset.findMany({
+        where: {
+          category: category.toUpperCase() as any,
+          isDeleted: false,
+        },
+        select: { id: true },
+      });
+
+      const categoryAssetIds = categoryAssets.map(a => a.id);
+      if (categoryAssetIds.length === 0) {
+        // No assets found with this category
+        return {
+          data: [],
+          meta: {
+            total: 0,
+            page,
+            limit,
+            totalPages: 0,
+          },
+        };
+      }
+
+      where.assetId = { in: categoryAssetIds };
     }
 
     // Search filter - search in asset names, asset IDs, and description

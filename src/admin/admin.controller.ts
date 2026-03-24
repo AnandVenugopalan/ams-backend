@@ -93,6 +93,7 @@ export class AdminController {
   getComplaints(
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('category') category?: string,
     @Query('reportedBy') reportedBy?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
@@ -102,6 +103,7 @@ export class AdminController {
     return this.adminService.getComplaints({
       search,
       status,
+      category,
       reportedBy,
       startDate,
       endDate,
